@@ -11,10 +11,6 @@
 #include <memory>
 #include <filesystem>
 
-#include "hope_thread/containers/queue/mpmc_bounded_queue.h"
-#include "hope_thread/containers/queue/spsc_queue.h"
-#include "hope_thread/runtime/threadpool.h"
-
 #include "hope-io/net/stream.h"
 #include "hope-io/net/event_loop.h"
 #include "hope-io/net/factory.h"
@@ -45,18 +41,10 @@ namespace ph {
             ev_cfg.port = port;
             m_event_loop->run(ev_cfg, 
             hope::io::event_loop::callbacks {
-                [this] (auto&& c) {
-                    on_create(c);
-                },
-                [this] (auto&& c) {
-                    on_read(c);
-                },
-                [this] (auto&& c) {
-                    on_write(c);
-                },
-                [this] (hope::io::event_loop::connection& c, const std::string& err) {
-                    on_error(c, err);
-                }
+                [this] (auto&& c) { on_create(c); },
+                [this] (auto&& c) { on_read(c); },
+                [this] (auto&& c) { on_write(c); },
+                [this] (hope::io::event_loop::connection& c, const std::string& err) { on_error(c, err); }
             });
             m_exec[(uint8_t)message::etype::list_patches] = [&]
                 (event_loop_stream_wrapper& stream, hope::io::event_loop::connection& c,

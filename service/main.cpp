@@ -1,6 +1,5 @@
 #include "service.h"
 
-#include "hope_logger/log_helper.h"
 #include "hope_logger/logger.h"
 #include "hope_logger/ostream.h"
 
@@ -21,11 +20,7 @@ int main(int argc, char* argv[]) {
         })
     );
 
-    raper::service::config cfg;
-    cfg.port = 11338;
-    cfg.slack_channel = "C091T3X2NNR";
-    cfg.slack_token = argv[1];
-    auto serv = raper::create_service(cfg);
+    auto serv = ph::create_service();
 
     return 0;
 }

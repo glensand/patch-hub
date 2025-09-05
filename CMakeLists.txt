@@ -4,7 +4,7 @@ project(crash-reporter)
 
 add_subdirectory(service)
 add_subdirectory(client)
-add_subdirectory(protocol)
+add_subdirectory(test)
 
 add_subdirectory(third-party/hope-logger/lib)
 add_subdirectory(third-party/hope-threading/lib)
