@@ -9,6 +9,7 @@
 #pragma once
 
 #include <string>
+
 #include "hope_logger/log_helper.h"
 
 #undef ERROR
@@ -34,6 +35,7 @@ namespace ph {
 
     class service {
     public:
+
         virtual ~service() = default;
     };
 

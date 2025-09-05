@@ -24,6 +24,7 @@ namespace ph {
             upload_patch,
             delete_patch,
             get_patches,
+            count,
         };
         static const std::string& str_type(const etype type) {
             switch (type) {
@@ -178,15 +179,19 @@ namespace ph {
         list_patches_response() : message(etype::list_patches){}
         struct patch_with_revision final {
             std::string patch_name;
+            std::string platform;
             revision_t revision;
+            std::size_t size;
         };
         std::vector<patch_with_revision> patches;
     private:
         virtual bool write_impl(event_loop_stream_wrapper& stream) override {
             stream.write((uint16_t)patches.size());
-            for (const auto& [name, revision] : patches) {
+            for (const auto& [name, platform, revision, size] : patches) {
                 stream.write(name);
                 stream.write(revision);
+                stream.write(platform);
+                stream.write(size);
             }
             return true;
         }
@@ -196,6 +201,8 @@ namespace ph {
                 patch_with_revision patch;
                 stream.read(patch.patch_name);
                 stream.read(patch.revision);
+                stream.read(patch.platform);
+                stream.read(patch.size);
                 patches.push_back(std::move(patch));
             }
             return true;
