@@ -32,6 +32,7 @@ namespace ph {
                 case etype::delete_patch: static std::string s2("delete_patch"); return s2;
                 case etype::get_patches: static std::string s3("get_patches"); return s3;
                 case etype::upload_patch: static std::string s4("upload_patch"); return s4;
+                default: ;
             }
             static std::string su("unknown");
             return su;
@@ -81,6 +82,8 @@ namespace ph {
             assert(!platform.empty());
             assert(revision != 0);
             if (remaining_count == 0) {
+                stream.write(platform);
+                stream.write(revision);
                 stream.write((uint16_t)patches.size());
                 for (const auto& patch : patches) {
                     stream.write(patch->name);
@@ -98,6 +101,8 @@ namespace ph {
         }
         virtual bool read_impl(event_loop_stream_wrapper& stream) override {
             if (remaining_count == 0) {
+                stream.read(platform);
+                stream.read(revision);
                 const auto patch_count = stream.read<uint16_t>();
                 for (auto i = 0; i < patch_count; i++) {
                     auto patch_ptr = std::make_shared<patch>();
@@ -105,6 +110,7 @@ namespace ph {
                     patch_ptr->file_size = stream.read<uint32_t>();
                     patch_ptr->data = new uint8_t[patch_ptr->file_size];
                     remaining_count += patch_ptr->file_size;
+                    patches.push_back(std::move(patch_ptr));
                 }
             }
             return do_stream_action(
@@ -158,7 +164,7 @@ namespace ph {
     };
 
     struct get_patches_response final : patch_message {
-        get_patches_response() : patch_message(etype::get_patches){};
+        get_patches_response() : patch_message(etype::get_patches){}
     };
 
     // client -> server message to store patches for specified revision and platform
@@ -167,7 +173,31 @@ namespace ph {
     };
 
     struct upload_patch_response final : message {
+        struct uploaded_patch final {
+            std::string name;
+            std::size_t file_size{};
+        };
+        std::vector<uploaded_patch> patches;
         upload_patch_response() : message(etype::upload_patch){}
+    private:
+        virtual bool write_impl(event_loop_stream_wrapper& stream) override {
+            stream.write((uint16_t)patches.size());
+            for (const auto& [name, size] : patches) {
+                stream.write(name);
+                stream.write(size);
+            }
+            return true;
+        }
+        virtual bool read_impl(event_loop_stream_wrapper& stream) override {
+            const auto num = stream.read<uint16_t>();
+            for (auto i = 0; i < num; i++) {
+                uploaded_patch patch;
+                stream.read(patch.name);
+                stream.read(patch.file_size);
+                patches.push_back(std::move(patch));
+            }
+            return true;
+        }
     };
 
     // client -> server request list of available patches
@@ -180,8 +210,8 @@ namespace ph {
         struct patch_with_revision final {
             std::string patch_name;
             std::string platform;
-            revision_t revision;
-            std::size_t size;
+            revision_t revision{ };
+            std::size_t size{ };
         };
         std::vector<patch_with_revision> patches;
     private:
@@ -227,7 +257,31 @@ namespace ph {
     };
 
     struct delete_patch_response final : message {
+        struct removed_patch final {
+            std::string patch_name;
+            std::size_t size{};
+        };
+        std::vector<removed_patch> removed_patches;
         delete_patch_response() : message(etype::delete_patch){}
+    private:
+        virtual bool write_impl(event_loop_stream_wrapper& stream) override {
+            stream.write((uint16_t)removed_patches.size());
+            for (const auto&[name, size] : removed_patches) {
+                stream.write(name);
+                stream.write(size);
+            }
+            return true;
+        }
+        virtual bool read_impl(event_loop_stream_wrapper& stream) override {
+            const auto num = stream.read<uint16_t>();
+            for (auto i = 0; i < num; i++) {
+                removed_patch patch;
+                stream.read(patch.patch_name);
+                stream.read(patch.size);
+                removed_patches.push_back(std::move(patch));
+            }
+            return true;
+        }
     };
 
     inline
@@ -237,6 +291,7 @@ namespace ph {
             case etype::upload_patch: return new upload_patch_request();
             case etype::list_patches: return new list_patches_request();
             case etype::get_patches: return new get_patches_request();
+            default: ;
         }
         return nullptr;
     }
@@ -248,6 +303,7 @@ namespace ph {
             case etype::upload_patch: return new upload_patch_response();
             case etype::delete_patch: return new delete_patch_response();
             case etype::get_patches: return new get_patches_response();
+            default: ;
         }
         return nullptr;
     }

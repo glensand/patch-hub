@@ -53,8 +53,8 @@ namespace ph {
                 list_patches_response response;
                 for (const auto& [key, array] : m_patch_registry) {
                     list_patches_response::patch_with_revision p;
-                    p.platform = key.second;
-                    p.revision = key.first;
+                    p.platform = key.platform;
+                    p.revision = key.revision;
                     for (const auto& pname : array) {
                         p.patch_name = pname->name;
                         response.patches.emplace_back(p);
@@ -70,7 +70,7 @@ namespace ph {
                 const auto request = static_cast<upload_patch_request*>(msg);
                 const auto platform = request->platform;
                 const auto revision = request->revision;
-                const auto key = std::make_pair(revision, platform);
+                const patch_key key{ revision, platform };
                 for (const auto& p : request->patches) {
                     auto& entry = m_patch_registry[key];
                     bool replaced = false;
@@ -96,7 +96,7 @@ namespace ph {
                 const auto upload_patches_request = static_cast<upload_patch_request*>(msg);
                 const auto revision = upload_patches_request->revision;
                 const auto platform = upload_patches_request->platform;
-                const auto key = std::make_pair(revision, platform);
+                const patch_key key{ revision, platform };
                 auto entry = m_patch_registry[key];
                 auto* response = new get_patches_response;
                 response->platform = platform;
@@ -117,7 +117,7 @@ namespace ph {
                 const auto delete_patch = static_cast<delete_patch_request*>(msg);
                 const auto platform = delete_patch->platform;
                 const auto revision = delete_patch->revision;
-                const auto key = std::make_pair(revision, platform);
+                const patch_key key{ revision, platform };
                 m_patch_registry.erase(key);
                 delete_patch_response response;
                 response.write(stream);
@@ -190,7 +190,7 @@ namespace ph {
             stream.end_read();
             if (complete) {
                 LOG(INFO) << "Message fully read";
-                m_exec[(int8_t)msg->get_type()]();
+                m_exec[(int8_t)msg->get_type()](stream, c, state_iterator, msg);
                 c.set_state(hope::io::event_loop::connection_state::write);
             } // otherwise needs more reads
         }
@@ -201,10 +201,24 @@ namespace ph {
         // client id (raw socket) to client state
         std::unordered_map<int32_t, message*> m_active_clients;
         std::array<exec_t, (int8_t)message::etype::count> m_exec;
+
         // revision and platform is a key for patches
-        using patch_key_t = std::pair<revision_t, std::string>;
+        struct patch_key final {
+            revision_t revision{};
+            std::string platform;
+            bool operator==(const patch_key& other) const {
+                return revision == other.revision && platform == other.platform;
+            }
+            struct hash final {
+                std::size_t operator()(const patch_key& k) const {
+                    std::size_t h1 = std::hash<revision_t>{}(k.revision);
+                    std::size_t h2 = std::hash<std::string>{}(k.platform);
+                    return h1 ^ (h2 << 1);
+                }
+            };
+        };
         using patch_array_t = std::vector<std::shared_ptr<patch>>;
-        std::unordered_map<patch_key_t, patch_array_t> m_patch_registry;
+        std::unordered_map<patch_key, patch_array_t, patch_key::hash> m_patch_registry;
     };
 
     service* create_service() {
