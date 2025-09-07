@@ -35,8 +35,9 @@ namespace ph {
 
     class service {
     public:
-
         virtual ~service() = default;
+        virtual void run() = 0;
+        virtual void stop() = 0;
     };
 
     service* create_service();

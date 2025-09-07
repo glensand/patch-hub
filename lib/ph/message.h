@@ -286,25 +286,31 @@ namespace ph {
 
     inline
     message* message::peek_request(event_loop_stream_wrapper &stream) {
-        switch (const auto type = stream.read<etype>()) {
+        // ReSharper disable once CppTooWideScope
+        const auto type = stream.read<etype>();
+        switch (type) {
             case etype::delete_patch: return new delete_patch_request();
             case etype::upload_patch: return new upload_patch_request();
             case etype::list_patches: return new list_patches_request();
             case etype::get_patches: return new get_patches_request();
             default: ;
         }
+        assert(false);
         return nullptr;
     }
 
     inline
     message* message::peek_response(event_loop_stream_wrapper &stream) {
-        switch (const auto type = stream.read<etype>()) {
+        // ReSharper disable once CppTooWideScope
+        const auto type = stream.read<etype>();
+        switch (type) {
             case etype::list_patches: return new list_patches_response();
             case etype::upload_patch: return new upload_patch_response();
             case etype::delete_patch: return new delete_patch_response();
             case etype::get_patches: return new get_patches_response();
             default: ;
         }
+        assert(false);
         return nullptr;
     }
 

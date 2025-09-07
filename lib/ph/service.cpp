@@ -30,22 +30,11 @@ namespace ph {
         using exec_t = std::function<void(event_loop_stream_wrapper& stream, hope::io::event_loop::connection& c,
             state_t in_state, message* msg)>;
 
+        virtual void stop() override {
+            m_event_loop->stop();
+        }
         service_impl()
         {
-            constexpr auto port = 1555;
-            m_event_loop = hope::io::create_event_loop();
-            LOG(INFO) << "Created event loop";
-            LOG(INFO) << "Run loop on port" << HOPE_VAL(port);
-
-            hope::io::event_loop::config ev_cfg;
-            ev_cfg.port = port;
-            m_event_loop->run(ev_cfg, 
-            hope::io::event_loop::callbacks {
-                [this] (auto&& c) { on_create(c); },
-                [this] (auto&& c) { on_read(c); },
-                [this] (auto&& c) { on_write(c); },
-                [this] (hope::io::event_loop::connection& c, const std::string& err) { on_error(c, err); }
-            });
             m_exec[(uint8_t)message::etype::list_patches] = [&]
                 (event_loop_stream_wrapper& stream, hope::io::event_loop::connection& c,
                     state_t in_state, message* msg) {
@@ -57,11 +46,14 @@ namespace ph {
                     p.revision = key.revision;
                     for (const auto& pname : array) {
                         p.patch_name = pname->name;
+                        p.size = pname->file_size;
                         response.patches.emplace_back(p);
                     }
                 }
                 // 8kb inside buffer should be enough to write all registered stuff (i hope)
+                stream.begin_write();
                 response.write(stream);
+                stream.end_write();
                 in_state->second = nullptr;
                 c.set_state(hope::io::event_loop::connection_state::write);
             };
@@ -84,18 +76,26 @@ namespace ph {
                         entry.emplace_back(p);
                     }
                 }
-                delete msg;
                 upload_patch_response response;
+                for (const auto& p : request->patches) {
+                    upload_patch_response::uploaded_patch newp;
+                    newp.name = p->name;
+                    newp.file_size = p->file_size;
+                    response.patches.emplace_back(newp);
+                }
+                delete msg;
                 // 8kb inside buffer should be enough to write all registered stuff (i hope)
+                stream.begin_write();
                 response.write(stream);
+                stream.end_write();
                 in_state->second = nullptr;
                 c.set_state(hope::io::event_loop::connection_state::write);
             };
             m_exec[uint8_t(message::etype::get_patches)] = [&](event_loop_stream_wrapper& stream,
                 hope::io::event_loop::connection& c, state_t in_state, message* msg) {
-                const auto upload_patches_request = static_cast<upload_patch_request*>(msg);
-                const auto revision = upload_patches_request->revision;
-                const auto platform = upload_patches_request->platform;
+                const auto get_patches_request = static_cast<ph::get_patches_request*>(msg);
+                const auto revision = get_patches_request->revision;
+                const auto platform = get_patches_request->platform;
                 const patch_key key{ revision, platform };
                 auto entry = m_patch_registry[key];
                 auto* response = new get_patches_response;
@@ -104,12 +104,14 @@ namespace ph {
                 response->patches = entry;
                 delete msg;
                 // if complete remove msg right now
+                stream.begin_write();
                 if (response->write(stream)) {
                     delete response;
                     in_state->second = nullptr;
                 } else {
                     in_state->second = response;
                 }
+                stream.end_write();
                 c.set_state(hope::io::event_loop::connection_state::write);
             };
             m_exec[uint8_t(message::etype::delete_patch)] = [&](event_loop_stream_wrapper& stream,
@@ -118,17 +120,43 @@ namespace ph {
                 const auto platform = delete_patch->platform;
                 const auto revision = delete_patch->revision;
                 const patch_key key{ revision, platform };
-                m_patch_registry.erase(key);
                 delete_patch_response response;
+                const auto& entry = m_patch_registry.find(key);
+                if (entry != m_patch_registry.end()) {
+                    for (const auto& p : entry->second) {
+                        delete_patch_response::removed_patch newp;
+                        newp.patch_name = p->name;
+                        newp.size = p->file_size;
+                        response.removed_patches.emplace_back(newp);
+                    }
+                    m_patch_registry.erase(entry);
+                }
+                stream.begin_write();
                 response.write(stream);
+                stream.end_write();
                 delete msg;
                 in_state->second = nullptr;
                 c.set_state(hope::io::event_loop::connection_state::write);
             };
         }
-
+        virtual void run() override {
+            constexpr auto port = 1555;
+            m_event_loop = hope::io::create_event_loop();
+            LOG(INFO) << "Created event loop";
+            LOG(INFO) << "Run loop on port" << HOPE_VAL(port);
+            hope::io::event_loop::config ev_cfg;
+            ev_cfg.port = port;
+            m_event_loop->run(ev_cfg,
+            hope::io::event_loop::callbacks {
+                [this] (auto&& c) { on_create(c); },
+                [this] (auto&& c) { on_read(c); },
+                [this] (auto&& c) { on_write(c); },
+                [this] (hope::io::event_loop::connection& c, const std::string& err) { on_error(c, err); }
+            });
+        }
         virtual ~service_impl() override {
-            m_running.store(false, std::memory_order_release);
+            m_event_loop->stop();
+            delete m_event_loop;
         }
 
     private:
@@ -147,6 +175,7 @@ namespace ph {
                         << HOPE_VAL(message::str_type(msg_ptr->get_type()));
                     handle_request(stream, c, state, msg_ptr);
                 } else {
+                    stream.begin_read();
                     auto* new_message = message::peek_request(stream);
                     state = m_active_clients.emplace(c.descriptor, new_message).first;
                     handle_request(stream, c, state, new_message);
@@ -191,11 +220,9 @@ namespace ph {
             if (complete) {
                 LOG(INFO) << "Message fully read";
                 m_exec[(int8_t)msg->get_type()](stream, c, state_iterator, msg);
-                c.set_state(hope::io::event_loop::connection_state::write);
             } // otherwise needs more reads
         }
 
-        std::atomic<bool> m_running{ true };
         hope::io::event_loop* m_event_loop{ nullptr };
 
         // client id (raw socket) to client state

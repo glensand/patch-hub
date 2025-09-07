@@ -1,5 +1,7 @@
 #include "client.h"
 
+#include <unordered_set>
+
 #include "hope-io/net/stream.h"
 #include "hope-io/net/factory.h"
 #include "message.h"
@@ -54,26 +56,41 @@ namespace {
             return res;
         }
         virtual plist_t upload(const plist_t& plist) override {
-            ph::upload_patch_request request;
+            struct patch_key final {
+                ph::revision_t revision{};
+                std::string platform;
+                bool operator==(const patch_key& other) const {
+                    return revision == other.revision && platform == other.platform;
+                }
+                struct hash final {
+                    std::size_t operator()(const patch_key& k) const {
+                        std::size_t h1 = std::hash<ph::revision_t>{}(k.revision);
+                        std::size_t h2 = std::hash<std::string>{}(k.platform);
+                        return h1 ^ (h2 << 1);
+                    }
+                };
+            };
+            std::unordered_map<patch_key, plist_t, patch_key::hash> batches_p;
             for (const auto& p : plist) {
-                request.platform = p.platform;
-                request.revision = p.revision;
-                auto patch = std::make_shared<ph::patch>();
-                patch->name = p.name;
-                patch->file_size = p.file_size;
-                patch->data = p.data;
-                request.patches.emplace_back(std::move(patch));
+                patch_key k{ ph::revision_t(p.revision), p.platform };
+                batches_p[k].emplace_back(p);
             }
-            m_stream->connect(m_host, m_port);
-            serialize(request);
-            auto response = deserialize<ph::upload_patch_response>();
-            m_stream->disconnect();
             plist_t res;
-            for (const auto& p : response->patches) {
-                patch newp;
-                newp.name = p.name;
-                newp.file_size = p.file_size;
-                res.emplace_back(std::move(newp));
+            for (const auto&[rp, batch] : batches_p) {
+                ph::upload_patch_request request;
+                request.platform = rp.platform;
+                request.revision = rp.revision;
+                for (const auto& p : batch) {
+                    auto patch = std::make_shared<ph::patch>();
+                    patch->name = p.name;
+                    patch->file_size = p.file_size;
+                    patch->data = p.data;
+                    request.patches.push_back(std::move(patch));
+                }
+                const auto thisres = upload_impl(request);
+                for (const auto& tp : thisres) {
+                    res.emplace_back(tp);
+                }
             }
             return res;
         }
@@ -90,11 +107,30 @@ namespace {
                 patch newp;
                 newp.name = p.patch_name;
                 newp.file_size = p.size;
+                newp.revision = revision;
+                newp.platform = platform;
                 res.emplace_back(std::move(newp));
             }
             return res;
         }
     private:
+        plist_t upload_impl(ph::upload_patch_request& request) {
+            m_stream->connect(m_host, m_port);
+            serialize(request);
+            auto response = deserialize<ph::upload_patch_response>();
+            m_stream->disconnect();
+            for (auto& p : request.patches) {
+                p->data = nullptr;
+            }
+            plist_t res;
+            for (const auto& p : response->patches) {
+                patch newp;
+                newp.name = p.name;
+                newp.file_size = p.file_size;
+                res.emplace_back(std::move(newp));
+            }
+            return res;
+        }
         void serialize(ph::message& req) const {
             ph::list_patches_request request;
             hope::io::event_loop::fixed_size_buffer b;
@@ -114,8 +150,8 @@ namespace {
             hope::io::event_loop::fixed_size_buffer b;
             read_chunk(b);
             ph::event_loop_stream_wrapper stream(b);
-            auto msg = ph::message::peek_response(stream);
             stream.begin_read();
+            auto msg = ph::message::peek_response(stream);
             auto complete = false;
             while (!complete) {
                 complete = msg->read(stream);
@@ -130,8 +166,10 @@ namespace {
             const auto size = m_stream->read<uint32_t>();
             b.write(&size, sizeof(size));
             const auto [dat, count] = b.free_chunk();
-            m_stream->read((void*)dat, size);
-            b.handle_write(size);
+            if (size - sizeof(size) > 0) {
+                m_stream->read((void*)dat, size - sizeof(size));
+                b.handle_write(size - sizeof(size));
+            }
         }
         hope::io::stream* m_stream{ nullptr };
         std::string m_host;

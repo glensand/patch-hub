@@ -136,8 +136,9 @@ void serialize_upload_request() {
     for (auto i = 0; i < request.patches.size(); ++i) {
         assert(upload_request->patches[i]->name == request.patches[i]->name);
         assert(upload_request->patches[i]->file_size == request.patches[i]->file_size);
-        std::memcmp(upload_request->patches[i]->data,
+        const auto equal = std::memcmp(upload_request->patches[i]->data,
             request.patches[i]->data, upload_request->patches[i]->file_size);
+        assert(equal == 0);
     }
     for (auto& patch : request.patches) {
         patch->data = nullptr;
