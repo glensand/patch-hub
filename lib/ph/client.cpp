@@ -11,13 +11,16 @@ namespace {
     // or some static method to peek chunk from stream as it done in read_chunk method
     class client_impl final : public ph::client {
     public:
-        client_impl() {
+        client_impl(const std::string& ip, int port)
+                : m_host(ip), m_port(port) {
             m_stream = hope::io::create_stream();
         }
         virtual plist_t list() override {
             ph::list_patches_request req;
+            m_stream->connect(m_host, m_port);
             serialize(req);
             auto response = deserialize<ph::list_patches_response>();
+            m_stream->disconnect();
             plist_t res;
             for (const auto& p : response->patches) {
                 patch newp;
@@ -33,8 +36,10 @@ namespace {
             ph::get_patches_request req;
             req.revision = revision;
             req.platform = platform;
+            m_stream->connect(m_host, m_port);
             serialize(req);
             auto response = deserialize<ph::get_patches_response>();
+            m_stream->disconnect();
             plist_t res;
             for (const auto& p : response->patches) {
                 patch newp;
@@ -59,8 +64,10 @@ namespace {
                 patch->data = p.data;
                 request.patches.emplace_back(std::move(patch));
             }
+            m_stream->connect(m_host, m_port);
             serialize(request);
             auto response = deserialize<ph::upload_patch_response>();
+            m_stream->disconnect();
             plist_t res;
             for (const auto& p : response->patches) {
                 patch newp;
@@ -74,8 +81,10 @@ namespace {
             ph::delete_patch_request request;
             request.platform = platform;
             request.revision = revision;
+            m_stream->connect(m_host, m_port);
             serialize(request);
             auto response = deserialize<ph::delete_patch_response>();
+            m_stream->disconnect();
             plist_t res;
             for (const auto& p : response->removed_patches) {
                 patch newp;
@@ -125,10 +134,12 @@ namespace {
             b.handle_write(size);
         }
         hope::io::stream* m_stream{ nullptr };
+        std::string m_host;
+        int m_port{ 0 };
     };
 
 }
 
-ph::client* ph::client::create() {
-    return new client_impl;
+ph::client* ph::client::create(const std::string& ip, int port) {
+    return new client_impl(ip, port);
 }

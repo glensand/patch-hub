@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <format>
+#include <iostream>
 #include <vector>
 
 namespace ph {
@@ -20,6 +22,14 @@ namespace ph {
             std::size_t file_size{};
             std::size_t revision{};
             uint8_t* data{};
+
+            void print() const {
+                std::cout  << "Patch:\n"
+                    << "  Name: " << name << '\n'
+                    << "  Platform: " << platform << '\n'
+                    << "  File size: " << file_size << " bytes\n"
+                    << "  Revision: " << revision << '\n';
+            }
         };
 
         virtual ~client() = default;
@@ -34,6 +44,6 @@ namespace ph {
         // tries to remove specified patches, returns list of removed patches
         virtual plist_t pdelete(std::size_t revision, const std::string& platform) = 0;
 
-        static client* create();
+        static client* create(const std::string& ip, int port);
     };
 }

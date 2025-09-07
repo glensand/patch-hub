@@ -1,72 +1,149 @@
+#include <filesystem>
+#include <format>
+#include <fstream>
+#include <iostream>
 #include <thread>
 
+#include "ph/client.h"
+#include "consolelib/disco.h"
+
+char* load_file(const std::string& filename, size_t& size);
+
 int main(int argc, char *argv[]) {
-    // srand(time(nullptr));
-    // auto random_number = std::rand();
-    // const std::string filename = std::to_string(random_number) + "big_file.txt";
-    // const int targetLines = 100000;
-    //
-    // std::ofstream file(filename);
-    // if (!file) {
-    //     std::cerr << "Error opening file for writing!" << std::endl;
-    //     return 1;
-    // }
-    //
-    // std::cout << "Generating file with " << targetLines << " lines..." << std::endl;
-    //
-    // int fishSize = sizeof(fishText) / sizeof(fishText[0]);
-    // for (int i = 0; i < targetLines; ++i) {
-    //     file << i + 1 << ": " << fishText[i % fishSize] << "\n";
-    // }
-    //
-    // std::cout << "Generated" << std::endl;
-    //
-    // auto stream = hope::io::create_stream();
-    // const auto file_size = std::filesystem::file_size(filename);
-    //
-    // message m;
-    // m.client_name = "My client";
-    // m.pc_name = "My PC";
-    // m.file_name = "report_" + filename;
-    // m.file_size = file_size;
-    // m.total_chunks = file_size / ChunkSize;
-    // if (m.total_chunks * ChunkSize < file_size) {
-    //     ++m.total_chunks;
-    // }
-    //
-    // hope::io::event_loop::fixed_size_buffer buffer;
-    // event_loop_stream_wrapper wrapper(buffer);
-    // wrapper.begin_write();
-    // m.write(wrapper);
-    // wrapper.end_write();
-    //
-    // stream->connect("localhost", std::stoi(argv[1]));
-    // auto message_serialized = buffer.used_chunk();
-    // stream->write(message_serialized.first, message_serialized.second);
-    //
-    // (void)stream->read<uint32_t>();
-    // (void)stream->read<bool>();
-    //
-    // std::ifstream read_file(filename, std::ios::binary);
-    // std::size_t total_bytes_read = 0;
-    // std::size_t chunk = 0;
-    // while (total_bytes_read < file_size) {
-    //     char buffer[ChunkSize];
-    //     size_t bytes_read = read_file.read(buffer, ChunkSize).gcount();
-    //     if (!bytes_read) {
-    //         std::cout << "Cannot read from file, close" << std::endl;
-    //         return -1;
-    //     }
-    //     stream->write(uint32_t(bytes_read) + 4); // size of payload +  size of size :)
-    //     stream->write(buffer, bytes_read);
-    //     total_bytes_read += bytes_read;
-    //
-    //     std::cout << "Sendt chunk:" << chunk << std::endl;
-    //
-    //     // part of our protocol
-    //     (void)stream->read<uint32_t>();
-    //     (void)stream->read<bool>();
-    // }
+    std::string ip = "127.0.0.1";
+    if (argc > 1) {
+        ip = argv[1];
+    } else {
+        std::cout << "Host is not provided, localhost will be used\n";
+    }
+
+    auto client = ph::client::create(ip, 1555);
+    bool exit = false;
+
+    disco::completer_impl completer; // im not sure why i added this 4 years ago
+    disco::string_command_executor invoker(new disco::function_proxy_impl, new disco::variable_proxy_impl,
+            [&completer](auto&& name) { completer.add_name(name); });
+
+    invoker.create_function("list", [client] {
+        std::cout << "List patches...\n";
+        const auto patches = client->list();
+        for (const auto& p : patches) {
+            p.print();
+        }
+    });
+    invoker.create_function("upload_from_dir", [client](const std::string& platform,
+        std::size_t revision, const std::string& dir) {
+        std::cout << "Upload from dir[" << dir << "]...\n";
+        ph::client::plist_t plist;
+        try {
+            for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+                if (entry.is_regular_file()) {
+                    ph::client::patch patch;
+                    patch.name = entry.path().filename();
+                    patch.revision = revision;
+                    patch.platform = platform;
+                    patch.data = (uint8_t*)load_file(entry.path().string(), patch.file_size);
+                    if (patch.data == nullptr) {
+                        std::cout << "Cannot load file[" << entry.path().string() << "]\n";
+                    } else {
+                        plist.push_back(patch);
+                        std::cout << entry.path().string() << "\n";
+                    }
+                }
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Error: " << e.what() << "\n";
+        }
+        const auto uploaded = client->upload(plist);
+        std::cout << "Uploaded patches:\n";
+        for (const auto& p : uploaded) {
+            p.print();
+        }
+        for (const auto& p : plist) {
+            delete p.data;
+        }
+    });
+    invoker.create_function("upload_file", [client](const std::string& platform,
+        std::size_t revision, const std::string& filepath) {
+        std::cout << "Upload patch file[" << filepath << "]...\n";
+        std::filesystem::path p(filepath);
+        ph::client::patch patch;
+        patch.name = p.filename().string();
+        patch.revision = revision;
+        patch.platform = platform;
+        patch.data = (uint8_t*)load_file(p.string(), patch.file_size);
+        if (patch.data == nullptr) {
+            std::cout << "Cannot load file\n";
+        } else {
+            const auto uplaoded = client->upload({patch} );
+            std::cout << "Uploaded patches:\n";
+            for (const auto& p : uplaoded) {
+                p.print();
+            }
+        }
+        delete patch.data;
+    });
+    invoker.create_function("download", [client](const std::string& platform, std::size_t revision, const std::string& outdir) {
+
+    });
+    invoker.create_function("delete", [client](const std::string& platform, std::size_t revision) {
+        std::cout << "Delete patch...\n";
+        const auto& removed = client->pdelete(revision, platform);
+        for (const auto& p : removed) {
+            p.print();
+        }
+    });
+    invoker.create_function("exit", [&exit] {
+        exit = true;
+    });
+    invoker.create_function("help", [&exit] {
+        std::cout << "// ------------------- API -------------------//\n";
+        std::cout << "[list]" <<
+            "-list all available patches (will be requested from server)\n";
+        std::cout << R"([delete("PlatformName", Revision)])" <<
+            "-delete all patches for specified revision and platform\n";
+        std::cout << R"([upload_file("PlatformName", Revision, "FullPath")])" <<
+            "-uploads patch for specified revision and platform\n";
+        std::cout << R"([upload_from_dir("PlatformName", Revision, "DirPath")])" <<
+            "-uploads patches for specified revision and platform\n";
+        std::cout << R"([download("PlatformName", Revision, "OutPath")])" <<
+            "-downloads patches for specified revision and platform, stores to out dir\n";
+        std::cout << "// ------------------- Examples -------------------//\n";
+        std::cout << "delete(\"WindowsClient\", 321800)\n";
+        std::cout << "upload_file(\"WindowsClient\", 321800, \"c:/patches/your_app/paks/win0.pak\")\n";
+        std::cout << "upload_from_dir(\"WindowsClient\", 321800, \"c:/patches/your_app/paks\")\n";
+        std::cout << "download(\"WindowsClient\", 321800, \"c:/game/content/paks/mods\")\n";
+    });
+    while (!exit) {
+        std::string query;
+        std::getline(std::cin, query);
+
+        try {
+            std::cout << invoker.invoke(query) << std::endl;
+        }
+        catch(const disco::exception& ex) {
+            std::cout << "An exception occurred: " << ex.what() << std::endl;
+        }
+        catch(const std::exception& ex) {
+            std::cout << "An exception occurred: " << ex.what() << std::endl;
+        }
+    }
+    delete client;
 
     return 0;
+}
+
+char* load_file(const std::string& filename, size_t& size) {
+    std::ifstream file(filename, std::ios::binary | std::ios::ate);
+    if (!file) return nullptr;
+
+    size = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    char* buffer = new char[size];
+    if (!file.read(buffer, size)) {
+        delete[] buffer;
+        return nullptr;
+    }
+    return buffer;
 }
