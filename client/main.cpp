@@ -6,8 +6,10 @@
 
 #include "ph/client.h"
 #include "consolelib/disco.h"
+#include "ph/service.h"
 
 char* load_file(const std::string& filename, size_t& size);
+void write_to_file(const std::string& filename, void* data, std::size_t size);
 
 int main(int argc, char *argv[]) {
     std::string ip = "127.0.0.1";
@@ -84,7 +86,13 @@ int main(int argc, char *argv[]) {
         delete patch.data;
     });
     invoker.create_function("download", [client](const std::string& platform, std::size_t revision, const std::string& outdir) {
-
+        std::cout << "Download patch files[" << platform << "]" "[" << revision <<"]" << " to[" << outdir << "]...\n";
+        const auto downloaded = client->download(revision, platform);
+        for (const auto& p : downloaded) {
+            p.print();
+            const std::string path = outdir + "/" + p.name;
+            write_to_file(path, p.data, p.file_size);
+        }
     });
     invoker.create_function("delete", [client](const std::string& platform, std::size_t revision) {
         std::cout << "Delete patch...\n";
@@ -146,4 +154,10 @@ char* load_file(const std::string& filename, size_t& size) {
         return nullptr;
     }
     return buffer;
+}
+
+void write_to_file(const std::string& filename, void* data, std::size_t size) {
+    std::ofstream file(filename, std::ios::binary);
+    file.write((char*)(data), size);
+    file.close();
 }
