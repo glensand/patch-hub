@@ -1,15 +1,15 @@
 cmake_minimum_required(VERSION 3.22)
-project(service)
+project(phtest)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 file(GLOB SERVICE_HEADERS
-    *.h
+        *.h
 )
 
 file(GLOB SERVICE_SOURSES
-    *.cpp
+        *.cpp
 )
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

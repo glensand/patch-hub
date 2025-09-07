@@ -239,8 +239,8 @@ namespace ph {
         }
     };
 
-    struct delete_patch_request final : patch_message {
-        delete_patch_request() : patch_message(etype::delete_patch){}
+    struct delete_patch_request final : message {
+        delete_patch_request() : message(etype::delete_patch){}
         revision_t revision{};
         std::string platform{};
     private:

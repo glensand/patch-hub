@@ -7,3 +7,6 @@
 [submodule "third-party/hope-threading"]
 	path = third-party/hope-threading
 	url = https://github.com/glensand/hope-threading
+[submodule "third-party/congenial-disco"]
+	path = third-party/congenial-disco
+	url = https://github.com/glensand/congenial-disco

@@ -17,10 +17,13 @@ add_executable(${PROJECT_NAME} ${SERVICE_HEADERS} ${SERVICE_SOURSES})
 target_compile_definitions(${PROJECT_NAME} PRIVATE "BUILD_DEBUG=$<IF:$<CONFIG:Debug>,1,0>")
 target_compile_definitions(${PROJECT_NAME} PRIVATE "-DCMAKE_EXPORT_COMPILE_COMMANDS=1")
 
+target_include_directories(${PROJECT_NAME} PUBLIC ../lib)
+target_include_directories(${PROJECT_NAME} PUBLIC ../third-party/congenial-disco/lib)
 target_include_directories(${PROJECT_NAME} PUBLIC ../third-party/hope-logger/lib)
 target_include_directories(${PROJECT_NAME} PUBLIC ../third-party/hope-threading/lib)
 target_include_directories(${PROJECT_NAME} PUBLIC ../third-party/hope-io/lib)
 
+target_link_libraries(${PROJECT_NAME} phlib)
 target_link_libraries(${PROJECT_NAME} hope_logger)
 target_link_libraries(${PROJECT_NAME} hope_thread)
 target_link_libraries(${PROJECT_NAME} hope-io)
