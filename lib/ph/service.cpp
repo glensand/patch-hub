@@ -89,6 +89,9 @@ namespace ph {
                 auto entry = m_patch_registry[key];
                 auto* response = new get_patches_response;
                 response->patches = entry;
+                for (const auto& p : response->patches) {
+                    LOG(INFO) << "Found patch:" << HOPE_VAL(p->name) << HOPE_VAL(p->file_size) << HOPE_VAL(p->platform) << HOPE_VAL(p->revision);
+                }
                 delete msg;
                 // if complete remove msg right now
                 if (response->write(stream)) {
