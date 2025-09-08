@@ -56,7 +56,6 @@ namespace {
         }
     private:
         void serialize(ph::message& req) const {
-            ph::list_patches_request request;
             hope::io::event_loop::fixed_size_buffer b;
             bool complete = false;
             while (!complete) {
