@@ -8,7 +8,6 @@
 
 #pragma once
 
-#include <format>
 #include <vector>
 
 #include "message.h"
