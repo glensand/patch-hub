@@ -12,6 +12,7 @@
 #include "stream_wrapper.h"
 #include "service.h"
 #include <cassert>
+#include <memory>
 
 namespace ph {
 
@@ -26,16 +27,15 @@ namespace ph {
             get_patches,
             count,
         };
-        static const std::string& str_type(const etype type) {
+        static std::string str_type(const etype type) {
             switch (type) {
-                case etype::list_patches: static std::string s("list_patches"); return s;
-                case etype::delete_patch: static std::string s2("delete_patch"); return s2;
-                case etype::get_patches: static std::string s3("get_patches"); return s3;
-                case etype::upload_patch: static std::string s4("upload_patch"); return s4;
-                default: ;
+                case etype::list_patches: return "list_patches";
+                case etype::delete_patch: return "delete_patch";
+                case etype::get_patches: return "get_patches";
+                case etype::upload_patch: return "upload_patch";
+				case etype::count: break;
             }
-            static std::string su("unknown");
-            return su;
+            return "unknown";
         }
 
         message(etype in_type) : type(in_type) {}

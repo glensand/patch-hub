@@ -41,7 +41,7 @@ int main(int argc, char *argv[]) {
             for (const auto& entry : std::filesystem::directory_iterator(dir)) {
                 if (entry.is_regular_file()) {
                     ph::client::patch patch;
-                    patch.name = entry.path().filename();
+                    patch.name = entry.path().filename().string();
                     patch.revision = revision;
                     patch.platform = platform;
                     patch.data = (uint8_t*)load_file(entry.path().string(), patch.file_size);
