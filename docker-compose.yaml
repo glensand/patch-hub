@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  crash-reporter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: patch-hub/service:latest
+    ports:
+      - "1555:1555"
+    environment:
+      - SLACK_TOKEN=${SLACK_TOKEN}
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
