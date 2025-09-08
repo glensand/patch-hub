@@ -9,6 +9,7 @@
 #pragma once
 
 #include "hope-io/net/event_loop.h"
+#include <cstdint>
 
 namespace ph {
     struct event_loop_stream_wrapper final {

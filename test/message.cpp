@@ -2,6 +2,7 @@
 
 #include "hope-io/net/event_loop.h"
 #include "ph/message.h"
+#include <cstring>
 
 void serialize_list_request() {
     ph::list_patches_request request;

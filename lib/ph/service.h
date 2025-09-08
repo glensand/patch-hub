@@ -9,7 +9,7 @@
 #pragma once
 
 #include <string>
-
+#include <cstdint>
 #include "hope_logger/log_helper.h"
 
 #undef ERROR

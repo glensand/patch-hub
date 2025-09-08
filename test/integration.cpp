@@ -3,7 +3,8 @@
 #include "ph/message.h"
 #include <thread>
 #include <unordered_set>
-
+#include <cstring>
+s
 // uploaded patches
 ph::client::plist_t list;
 
