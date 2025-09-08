@@ -32,6 +32,6 @@ COPY --from=builder /app/build/bin/service ./service
 
 EXPOSE 1555
 
-ENTRYPOINT ["sh", "-c"]
+ENTRYPOINT ["./service"]
 
 CMD ["true"]
