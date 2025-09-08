@@ -5,6 +5,7 @@
 
 #include "ph/client.h"
 #include "consolelib/disco.h"
+#include "hope-io/net/init.h"
 #include "ph/service.h"
 
 char* load_file(const std::string& filename, uint32_t& size);
@@ -14,9 +15,12 @@ int main(int argc, char *argv[]) {
     std::string ip = "127.0.0.1";
     if (argc > 1) {
         ip = argv[1];
+        std::cout << "Parsed ip" << ip << '\n';
     } else {
         std::cout << "Host is not provided, localhost will be used\n";
     }
+
+    hope::io::init();
 
     auto client = ph::client::create(ip, 1555);
     bool exit = false;
