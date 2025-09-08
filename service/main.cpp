@@ -14,6 +14,7 @@ int main() {
     );
 
     auto serv = ph::create_service();
+    serv->run();
 
     return 0;
 }
