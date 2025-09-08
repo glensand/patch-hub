@@ -39,6 +39,7 @@ namespace ph {
                 (event_loop_stream_wrapper& stream, hope::io::event_loop::connection& c,
                     state_t in_state, message* msg) {
                 delete msg;
+                LOG(INFO) << "Got list message" << HOPE_VAL(c.descriptor);
                 list_patches_response response;
                 for (const auto& [_, array] : m_patch_registry) {
                     for (const auto& p : array) {
@@ -53,7 +54,9 @@ namespace ph {
             m_exec[uint8_t((uint8_t)message::etype::upload_patch)] = [&](event_loop_stream_wrapper& stream,
                 hope::io::event_loop::connection& c, state_t in_state, message* msg) {
                 const auto request = static_cast<upload_patch_request*>(msg);
+                LOG(INFO) << "Got upload message" << HOPE_VAL(c.descriptor);
                 for (const auto& p : request->patches) {
+                    LOG(INFO) << HOPE_VAL(p->name) << HOPE_VAL(p->file_size) << HOPE_VAL(p->platform) << HOPE_VAL(p->revision);
                     const patch_key key{ p->revision, p->platform };
                     auto& entry = m_patch_registry[key];
                     bool replaced = false;
@@ -79,6 +82,7 @@ namespace ph {
             m_exec[uint8_t(message::etype::get_patches)] = [&](event_loop_stream_wrapper& stream,
                 hope::io::event_loop::connection& c, state_t in_state, message* msg) {
                 const auto get_patches_request = static_cast<ph::get_patches_request*>(msg);
+                LOG(INFO) << "Got patch request" << HOPE_VAL(c.descriptor) << HOPE_VAL(get_patches_request->platform) << HOPE_VAL(get_patches_request->revision);
                 const auto revision = get_patches_request->revision;
                 const auto platform = get_patches_request->platform;
                 const patch_key key{ revision, platform };
@@ -98,6 +102,7 @@ namespace ph {
             m_exec[uint8_t(message::etype::delete_patch)] = [&](event_loop_stream_wrapper& stream,
                 hope::io::event_loop::connection& c, state_t in_state, message* msg) {
                 const auto delete_patch = static_cast<delete_patch_request*>(msg);
+                LOG(INFO) << "Delete patch request" << HOPE_VAL(c.descriptor) << HOPE_VAL(delete_patch->platform) << HOPE_VAL(delete_patch->revision);
                 const auto platform = delete_patch->platform;
                 const auto revision = delete_patch->revision;
                 const patch_key key{ revision, platform };
@@ -105,6 +110,9 @@ namespace ph {
                 const auto& entry = m_patch_registry.find(key);
                 if (entry != m_patch_registry.end()) {
                     response.removed_patches = entry->second;
+                    for (const auto& p : response.removed_patches) {
+                        LOG(INFO) << "Removed patch:" << HOPE_VAL(p->name) << HOPE_VAL(p->file_size) << HOPE_VAL(p->platform) << HOPE_VAL(p->revision);
+                    }
                     m_patch_registry.erase(entry);
                 }
                 response.write(stream);
