@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: patch-hub/service:latest
+    image: phub/service:latest
     ports:
       - "1555:1555"
     environment:
