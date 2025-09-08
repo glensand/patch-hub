@@ -5,11 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: phub/service:latest
     ports:
       - "1555:1555"
-    environment:
-      - SLACK_TOKEN=${SLACK_TOKEN}
     volumes:
       - ./logs:/app/logs
     restart: unless-stopped
