@@ -24,15 +24,6 @@ namespace ph {
 
     using revision_t = uint32_t;
 
-    struct patch final {
-        std::string name;
-        std::size_t file_size;
-        uint8_t* data{ nullptr };
-        ~patch() {
-            delete[] data;
-        }
-    };
-
     class service {
     public:
         virtual ~service() = default;

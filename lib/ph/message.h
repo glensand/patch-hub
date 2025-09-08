@@ -12,9 +12,40 @@
 #include "stream_wrapper.h"
 #include "service.h"
 #include <cassert>
+#include <iostream>
 #include <memory>
 
 namespace ph {
+
+    struct patch final {
+        std::string name;
+        std::string platform;
+        uint32_t file_size{};
+        uint32_t revision{};
+        uint8_t* data{};
+        ~patch() {
+	        delete[] data;
+        }
+        void print() const {
+            std::cout << "Patch:\n"
+                << "  Name: " << name << '\n'
+                << "  Platform: " << platform << '\n'
+                << "  File size: " << file_size << " bytes\n"
+                << "  Revision: " << revision << '\n';
+        }
+        void write(event_loop_stream_wrapper& stream) const {
+	        stream.write(name);
+	        stream.write(platform);
+	        stream.write(file_size);
+	        stream.write(revision);
+        }
+        void read(event_loop_stream_wrapper& stream) {
+            stream.read(name);
+            stream.read(platform);
+            stream.read(file_size);
+            stream.read(revision);
+        }
+    };
 
     // flow:
     // client : message -> server
@@ -71,23 +102,15 @@ namespace ph {
     };
 
     struct patch_message : message {
-        // here we use sharedptr 'cause the data could be swapped at any time
         std::vector<std::shared_ptr<patch>> patches;
-        std::string platform{};
-        revision_t revision{};
     protected:
         explicit patch_message(etype in_type) : message(in_type) { }
     private:
         virtual bool write_impl(event_loop_stream_wrapper& stream) override {
-            assert(!platform.empty());
-            assert(revision != 0);
             if (remaining_count == 0) {
-                stream.write(platform);
-                stream.write(revision);
                 stream.write((uint16_t)patches.size());
                 for (const auto& patch : patches) {
-                    stream.write(patch->name);
-                    stream.write((uint32_t)patch->file_size);
+                    patch->write(stream);
                     remaining_count += patch->file_size;
                 }
             }
@@ -101,13 +124,10 @@ namespace ph {
         }
         virtual bool read_impl(event_loop_stream_wrapper& stream) override {
             if (remaining_count == 0) {
-                stream.read(platform);
-                stream.read(revision);
                 const auto patch_count = stream.read<uint16_t>();
                 for (auto i = 0; i < patch_count; i++) {
                     auto patch_ptr = std::make_shared<patch>();
-                    stream.read(patch_ptr->name);
-                    patch_ptr->file_size = stream.read<uint32_t>();
+                    patch_ptr->read(stream);
                     patch_ptr->data = new uint8_t[patch_ptr->file_size];
                     remaining_count += patch_ptr->file_size;
                     patches.push_back(std::move(patch_ptr));
@@ -173,28 +193,22 @@ namespace ph {
     };
 
     struct upload_patch_response final : message {
-        struct uploaded_patch final {
-            std::string name;
-            std::size_t file_size{};
-        };
-        std::vector<uploaded_patch> patches;
+        std::vector<std::shared_ptr<patch>> patches;
         upload_patch_response() : message(etype::upload_patch){}
     private:
         virtual bool write_impl(event_loop_stream_wrapper& stream) override {
             stream.write((uint16_t)patches.size());
-            for (const auto& [name, size] : patches) {
-                stream.write(name);
-                stream.write(size);
+            for (const auto& p : patches) {
+                p->write(stream);
             }
             return true;
         }
         virtual bool read_impl(event_loop_stream_wrapper& stream) override {
             const auto num = stream.read<uint16_t>();
             for (auto i = 0; i < num; i++) {
-                uploaded_patch patch;
-                stream.read(patch.name);
-                stream.read(patch.file_size);
-                patches.push_back(std::move(patch));
+                auto p = std::make_shared<patch>();
+                p->read(stream);
+                patches.push_back(std::move(p));
             }
             return true;
         }
@@ -207,33 +221,21 @@ namespace ph {
 
     struct list_patches_response final : message {
         list_patches_response() : message(etype::list_patches){}
-        struct patch_with_revision final {
-            std::string patch_name;
-            std::string platform;
-            revision_t revision{ };
-            std::size_t size{ };
-        };
-        std::vector<patch_with_revision> patches;
+        std::vector<std::shared_ptr<patch>> patches;
     private:
         virtual bool write_impl(event_loop_stream_wrapper& stream) override {
             stream.write((uint16_t)patches.size());
-            for (const auto& [name, platform, revision, size] : patches) {
-                stream.write(name);
-                stream.write(revision);
-                stream.write(platform);
-                stream.write(size);
+            for (const auto& p : patches) {
+                p->write(stream);
             }
             return true;
         }
         virtual bool read_impl(event_loop_stream_wrapper& stream) override {
             const auto num = stream.read<uint16_t>();
             for (auto i = 0; i < num; i++) {
-                patch_with_revision patch;
-                stream.read(patch.patch_name);
-                stream.read(patch.revision);
-                stream.read(patch.platform);
-                stream.read(patch.size);
-                patches.push_back(std::move(patch));
+                auto p = std::make_shared<patch>();
+                p->read(stream);
+                patches.push_back(std::move(p));
             }
             return true;
         }
@@ -257,28 +259,22 @@ namespace ph {
     };
 
     struct delete_patch_response final : message {
-        struct removed_patch final {
-            std::string patch_name;
-            std::size_t size{};
-        };
-        std::vector<removed_patch> removed_patches;
+        std::vector<std::shared_ptr<patch>> removed_patches;
         delete_patch_response() : message(etype::delete_patch){}
     private:
         virtual bool write_impl(event_loop_stream_wrapper& stream) override {
             stream.write((uint16_t)removed_patches.size());
-            for (const auto&[name, size] : removed_patches) {
-                stream.write(name);
-                stream.write(size);
+            for (const auto& p : removed_patches) {
+                p->write(stream);
             }
             return true;
         }
         virtual bool read_impl(event_loop_stream_wrapper& stream) override {
             const auto num = stream.read<uint16_t>();
             for (auto i = 0; i < num; i++) {
-                removed_patch patch;
-                stream.read(patch.patch_name);
-                stream.read(patch.size);
-                removed_patches.push_back(std::move(patch));
+                auto p = std::make_shared<patch>();
+                p->read(stream);
+                removed_patches.push_back(std::move(p));
             }
             return true;
         }
@@ -293,7 +289,7 @@ namespace ph {
             case etype::upload_patch: return new upload_patch_request();
             case etype::list_patches: return new list_patches_request();
             case etype::get_patches: return new get_patches_request();
-            default: ;
+			case etype::count: break;
         }
         assert(false);
         return nullptr;
@@ -308,7 +304,7 @@ namespace ph {
             case etype::upload_patch: return new upload_patch_response();
             case etype::delete_patch: return new delete_patch_response();
             case etype::get_patches: return new get_patches_response();
-            default: ;
+            case etype::count: break;
         }
         assert(false);
         return nullptr;

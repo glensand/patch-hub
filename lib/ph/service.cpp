@@ -40,30 +40,21 @@ namespace ph {
                     state_t in_state, message* msg) {
                 delete msg;
                 list_patches_response response;
-                for (const auto& [key, array] : m_patch_registry) {
-                    list_patches_response::patch_with_revision p;
-                    p.platform = key.platform;
-                    p.revision = key.revision;
-                    for (const auto& pname : array) {
-                        p.patch_name = pname->name;
-                        p.size = pname->file_size;
+                for (const auto& [_, array] : m_patch_registry) {
+                    for (const auto& p : array) {
                         response.patches.emplace_back(p);
                     }
                 }
                 // 8kb inside buffer should be enough to write all registered stuff (i hope)
-                stream.begin_write();
                 response.write(stream);
-                stream.end_write();
                 in_state->second = nullptr;
                 c.set_state(hope::io::event_loop::connection_state::write);
             };
             m_exec[uint8_t((uint8_t)message::etype::upload_patch)] = [&](event_loop_stream_wrapper& stream,
                 hope::io::event_loop::connection& c, state_t in_state, message* msg) {
                 const auto request = static_cast<upload_patch_request*>(msg);
-                const auto platform = request->platform;
-                const auto revision = request->revision;
-                const patch_key key{ revision, platform };
                 for (const auto& p : request->patches) {
+                    const patch_key key{ p->revision, p->platform };
                     auto& entry = m_patch_registry[key];
                     bool replaced = false;
                     for (auto& maybepatch : entry) {
@@ -77,17 +68,11 @@ namespace ph {
                     }
                 }
                 upload_patch_response response;
-                for (const auto& p : request->patches) {
-                    upload_patch_response::uploaded_patch newp;
-                    newp.name = p->name;
-                    newp.file_size = p->file_size;
-                    response.patches.emplace_back(newp);
-                }
+                // send names and meta back, so the client be sure everethyng is ok
+                response.patches = request->patches;
                 delete msg;
                 // 8kb inside buffer should be enough to write all registered stuff (i hope)
-                stream.begin_write();
                 response.write(stream);
-                stream.end_write();
                 in_state->second = nullptr;
                 c.set_state(hope::io::event_loop::connection_state::write);
             };
@@ -99,19 +84,15 @@ namespace ph {
                 const patch_key key{ revision, platform };
                 auto entry = m_patch_registry[key];
                 auto* response = new get_patches_response;
-                response->platform = platform;
-                response->revision = revision;
                 response->patches = entry;
                 delete msg;
                 // if complete remove msg right now
-                stream.begin_write();
                 if (response->write(stream)) {
                     delete response;
                     in_state->second = nullptr;
                 } else {
                     in_state->second = response;
                 }
-                stream.end_write();
                 c.set_state(hope::io::event_loop::connection_state::write);
             };
             m_exec[uint8_t(message::etype::delete_patch)] = [&](event_loop_stream_wrapper& stream,
@@ -123,17 +104,10 @@ namespace ph {
                 delete_patch_response response;
                 const auto& entry = m_patch_registry.find(key);
                 if (entry != m_patch_registry.end()) {
-                    for (const auto& p : entry->second) {
-                        delete_patch_response::removed_patch newp;
-                        newp.patch_name = p->name;
-                        newp.size = p->file_size;
-                        response.removed_patches.emplace_back(newp);
-                    }
+                    response.removed_patches = entry->second;
                     m_patch_registry.erase(entry);
                 }
-                stream.begin_write();
                 response.write(stream);
-                stream.end_write();
                 delete msg;
                 in_state->second = nullptr;
                 c.set_state(hope::io::event_loop::connection_state::write);
@@ -175,7 +149,6 @@ namespace ph {
                         << HOPE_VAL(message::str_type(msg_ptr->get_type()));
                     handle_request(stream, c, state, msg_ptr);
                 } else {
-                    stream.begin_read();
                     auto* new_message = message::peek_request(stream);
                     state = m_active_clients.emplace(c.descriptor, new_message).first;
                     handle_request(stream, c, state, new_message);
@@ -189,9 +162,7 @@ namespace ph {
                 bool complete = msg_ptr == nullptr;
                 if (!complete) {
                     event_loop_stream_wrapper stream(*c.buffer);
-                    stream.begin_write();
                     complete = msg_ptr->write(stream);
-                    stream.end_write();
                 }
                 if (complete) {
                     LOG(INFO) << "Send last chunk for msg, close connection" << HOPE_VAL(c.descriptor);
@@ -214,10 +185,7 @@ namespace ph {
         }
 
         void handle_request(event_loop_stream_wrapper& stream, hope::io::event_loop::connection& c, state_t state_iterator, message* msg) {
-            stream.begin_read();
-            const auto complete = msg->read(stream);
-            stream.end_read();
-            if (complete) {
+	        if (const auto complete = msg->read(stream)) {
                 LOG(INFO) << "Message fully read";
                 m_exec[(int8_t)msg->get_type()](stream, c, state_iterator, msg);
             } // otherwise needs more reads

@@ -8,26 +8,26 @@
 ph::client::plist_t list;
 
 void run_upload() {
-    std::cout << "// ----------- Upload patches // -----------" << std::endl;
+    std::cout << "// ----------- Upload patches // -----------\n";
     auto client = ph::client::create("localhost", 1555);
     const auto uploaded = client->upload(list);
     for (auto p : uploaded) {
-        p.print();
+        p->print();
     }
     delete client;
 }
 
 void run_list() {
-    std::cout << "// ----------- List patches // -----------" << std::endl;
+    std::cout << "// ----------- List patches // -----------\n";
     auto client = ph::client::create("localhost", 1555);
     const auto plist = client->list();
     for (const auto& p : plist) {
-        p.print();
+        p->print();
         bool found = false;
         for (const auto& gp : list) {
-            if (p.name == gp.name && p.revision == gp.revision && p.platform == gp.platform) {
+            if (p->name == gp->name && p->revision == gp->revision && p->platform == gp->platform) {
                 found = true;
-                assert(p.file_size == gp.file_size);
+                assert(p->file_size == gp->file_size);
             }
         }
         assert(found);
@@ -54,19 +54,19 @@ void run_download() {
     };
     std::unordered_set<patch_key, patch_key::hash> patches;
     for (const auto& p : plist) {
-        patch_key k{ (ph::revision_t)p.revision, p.platform };
+        patch_key k{ p->revision, p->platform };
         patches.emplace(k);
     }
     for (const auto& [rev, platform] : patches) {
         const auto downloaded = client->download(rev, platform);
         for (const auto& p : downloaded) {
-            p.print();
+            p->print();
             bool found = false;
             for (const auto& gp : list) {
-                if (p.name == gp.name && p.revision == gp.revision && p.platform == gp.platform) {
+                if (p->name == gp->name && p->revision == gp->revision && p->platform == gp->platform) {
                     found = true;
-                    assert(p.file_size == gp.file_size);
-                    const auto eq = std::memcmp(p.data, gp.data, p.file_size);
+                    assert(p->file_size == gp->file_size);
+                    const auto eq = std::memcmp(p->data, gp->data, p->file_size);
                     assert(eq == 0);
                 }
             }
@@ -78,9 +78,9 @@ void run_download() {
 void run_delete() {
     std::cout << "// ----------- Delete patches // -----------" << std::endl;
     auto client = ph::client::create("localhost", 1555);
-    std::vector<ph::client::patch> removedall;
+    std::vector<std::shared_ptr<ph::patch>> removedall;
     for (const auto& p : list) {
-        const auto removed = client->pdelete(p.revision, p.platform);
+        const auto removed = client->pdelete(p->revision, p->platform);
         assert(!removed.empty());
         for (const auto& rp : removed) {
             removedall.emplace_back(rp);
@@ -89,8 +89,8 @@ void run_delete() {
     for (const auto& r : removedall) {
         for (auto it = begin(list); it != end(list); ) {
             auto& candidate = *it;
-            if (candidate.name == r.name) {
-                candidate.data = nullptr;
+            if (candidate->name == r->name) {
+                candidate->data = nullptr;
                 it = list.erase(it);
             } else {
                 ++it;
@@ -111,12 +111,12 @@ void run_integration() {
     auto* test_buffer = new uint8_t[buffer_size];
     for (auto i = 0; i < 5; ++i) {
         test_buffer[i] = std::rand() % 256;
-        ph::client::patch p;
-        p.name = "random_name" + std::to_string(i);
-        p.file_size = 31 * 1024 + std::rand() % (32 * 1024);
-        p.data = test_buffer;
-        p.platform = "random_platform" + std::to_string(i);
-        p.revision = i * 1000 + 1;
+        auto p = std::make_shared<ph::patch>();
+        p->name = "random_name" + std::to_string(i);
+        p->file_size = 31 * 1024 + std::rand() % (32 * 1024);
+        p->data = test_buffer;
+        p->platform = "random_platform" + std::to_string(i);
+        p->revision = i * 1000 + 1;
         list.emplace_back(std::move(p));
     }
 
@@ -130,7 +130,7 @@ void run_integration() {
     run_delete();
 
     for (auto& p : list) {
-        p.data = nullptr;
+        p->data = nullptr;
     }
     delete [] test_buffer;
 

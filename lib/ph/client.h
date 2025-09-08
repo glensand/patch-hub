@@ -9,32 +9,17 @@
 #pragma once
 
 #include <format>
-#include <iostream>
 #include <vector>
+
+#include "message.h"
 
 namespace ph {
 
     class client {
     public:
-        struct patch final {
-            std::string name;
-            std::string platform;
-            std::size_t file_size{};
-            std::size_t revision{};
-            uint8_t* data{};
-
-            void print() const {
-                std::cout  << "Patch:\n"
-                    << "  Name: " << name << '\n'
-                    << "  Platform: " << platform << '\n'
-                    << "  File size: " << file_size << " bytes\n"
-                    << "  Revision: " << revision << '\n';
-            }
-        };
-
         virtual ~client() = default;
 
-        using plist_t = std::vector<patch>;
+        using plist_t = std::vector<std::shared_ptr<patch>>;
         // list all available patches, data will be empty
         virtual plist_t list() = 0;
         // downloads all available patches for revision and platform

@@ -12,7 +12,7 @@
 
 namespace ph {
     struct event_loop_stream_wrapper final {
-        enum class estate {
+        enum class estate : uint8_t{
             read,
             write,
             none,
@@ -28,39 +28,14 @@ namespace ph {
             }
             return false;
         }
-        void begin_write() const {
-            assert(state == estate::none || state == estate::write);
-            if (state != estate::write) {
-                buffer.reset();
-                // seek buffer to 4 bytes, for event-loop it is important to know count of bytes we'll receive at this stage
-                buffer.handle_write(sizeof(uint32_t));
-            }
-            state = estate::write;
-        }
-        void end_write() const {
-            assert(state == estate::write);
-            state = estate::none;
-            const auto used_chunk = buffer.used_chunk();
-            // write size before submit
-            *(uint32_t*)used_chunk.first = used_chunk.second;
-        }
-        void begin_read() const {
-            assert(state == estate::none || state == estate::read);
-            if (state != estate::read) {
-                // skip first 4 bytes, belongs to loop wrapper
-                buffer.handle_read(sizeof(uint32_t));
-            }
-            state = estate::read;
-        }
-        void end_read() const {
-            assert(state == estate::read);
-            state = estate::none;
-        }
         void write(const void *data, std::size_t length) const {
-            assert(state == estate::write);
+            begin_write();
             buffer.write(data, length);
+            const auto used_chunk = buffer.used_chunk();
+            *(uint32_t*)used_chunk.first = (uint32_t)used_chunk.second;  // NOLINT(clang-diagnostic-cast-qual)
         }
-        size_t read(void *data, std::size_t length) {
+        size_t read(void *data, std::size_t length) const {
+            begin_read();
             assert(state == estate::read);
             return buffer.read(data, length);
         }
@@ -87,8 +62,23 @@ namespace ph {
         }
 
     private:
+        void begin_write() const {
+            if (state != estate::write) {
+                buffer.reset();
+                // seek buffer to 4 bytes, for event-loop it is important to know count of bytes we'll receive at this stage
+                buffer.handle_write(sizeof(uint32_t));
+            }
+            state = estate::write;
+        }
+        void begin_read() const {
+            if (state != estate::read) {
+                // skip first 4 bytes, belongs to loop wrapper
+                buffer.handle_read(sizeof(uint32_t));
+            }
+            state = estate::read;
+        }
         mutable estate state = estate::none;
-        hope::io::event_loop::fixed_size_buffer& buffer;
+        hope::io::event_loop::fixed_size_buffer& buffer;  // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
     };
 
     template <>

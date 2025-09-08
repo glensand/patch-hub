@@ -8,8 +8,8 @@
 #include "consolelib/disco.h"
 #include "ph/service.h"
 
-char* load_file(const std::string& filename, size_t& size);
-void write_to_file(const std::string& filename, void* data, std::size_t size);
+char* load_file(const std::string& filename, uint32_t& size);
+void write_to_file(const std::string& filename, void* data, uint32_t size);
 
 int main(int argc, char *argv[]) {
     std::string ip = "127.0.0.1";
@@ -30,7 +30,7 @@ int main(int argc, char *argv[]) {
         std::cout << "List patches...\n";
         const auto patches = client->list();
         for (const auto& p : patches) {
-            p.print();
+            p->print();
         }
     });
     invoker.create_function("upload_from_dir", [client](const std::string& platform,
@@ -40,15 +40,15 @@ int main(int argc, char *argv[]) {
         try {
             for (const auto& entry : std::filesystem::directory_iterator(dir)) {
                 if (entry.is_regular_file()) {
-                    ph::client::patch patch;
-                    patch.name = entry.path().filename().string();
-                    patch.revision = revision;
-                    patch.platform = platform;
-                    patch.data = (uint8_t*)load_file(entry.path().string(), patch.file_size);
-                    if (patch.data == nullptr) {
+                    auto p = std::make_shared<ph::patch>();
+                    p->name = entry.path().filename().string();
+                    p->revision = (ph::revision_t)revision;
+                    p->platform = platform;
+                    p->data = (uint8_t*)load_file(entry.path().string(), p->file_size);
+                    if (p->data == nullptr) {
                         std::cout << "Cannot load file[" << entry.path().string() << "]\n";
                     } else {
-                        plist.push_back(patch);
+                        plist.push_back(std::move(p));
                         std::cout << entry.path().string() << "\n";
                     }
                 }
@@ -59,46 +59,46 @@ int main(int argc, char *argv[]) {
         const auto uploaded = client->upload(plist);
         std::cout << "Uploaded patches:\n";
         for (const auto& p : uploaded) {
-            p.print();
+            p->print();
         }
         for (const auto& p : plist) {
-            delete p.data;
+            delete p->data;
         }
     });
     invoker.create_function("upload_file", [client](const std::string& platform,
         std::size_t revision, const std::string& filepath) {
         std::cout << "Upload patch file[" << filepath << "]...\n";
         std::filesystem::path p(filepath);
-        ph::client::patch patch;
-        patch.name = p.filename().string();
-        patch.revision = revision;
-        patch.platform = platform;
-        patch.data = (uint8_t*)load_file(p.string(), patch.file_size);
-        if (patch.data == nullptr) {
+        auto patch = std::make_shared<ph::patch>();
+        patch->name = p.filename().string();
+        patch->revision = (ph::revision_t)revision;
+        patch->platform = platform;
+        patch->data = (uint8_t*)load_file(p.string(), patch->file_size);
+        if (patch->data == nullptr) {
             std::cout << "Cannot load file\n";
         } else {
             const auto uplaoded = client->upload({patch} );
             std::cout << "Uploaded patches:\n";
             for (const auto& p : uplaoded) {
-                p.print();
+                p->print();
             }
         }
-        delete patch.data;
+        delete patch->data;
     });
     invoker.create_function("download", [client](const std::string& platform, std::size_t revision, const std::string& outdir) {
         std::cout << "Download patch files[" << platform << "]" "[" << revision <<"]" << " to[" << outdir << "]...\n";
         const auto downloaded = client->download(revision, platform);
         for (const auto& p : downloaded) {
-            p.print();
-            const std::string path = outdir + "/" + p.name;
-            write_to_file(path, p.data, p.file_size);
+            p->print();
+            const std::string path = outdir + "/" + p->name;
+            write_to_file(path, p->data, p->file_size);
         }
     });
     invoker.create_function("delete", [client](const std::string& platform, std::size_t revision) {
         std::cout << "Delete patch...\n";
         const auto& removed = client->pdelete(revision, platform);
         for (const auto& p : removed) {
-            p.print();
+            p->print();
         }
     });
     invoker.create_function("exit", [&exit] {
@@ -127,13 +127,13 @@ int main(int argc, char *argv[]) {
         std::getline(std::cin, query);
 
         try {
-            std::cout << invoker.invoke(query) << std::endl;
+            std::cout << invoker.invoke(query) << '\n';
         }
         catch(const disco::exception& ex) {
-            std::cout << "An exception occurred: " << ex.what() << std::endl;
+            std::cout << "An exception occurred: " << ex.what() << '\n';
         }
         catch(const std::exception& ex) {
-            std::cout << "An exception occurred: " << ex.what() << std::endl;
+            std::cout << "An exception occurred: " << ex.what() << '\n';
         }
     }
     delete client;
@@ -141,7 +141,7 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-char* load_file(const std::string& filename, size_t& size) {
+char* load_file(const std::string& filename, uint32_t& size) {
     std::ifstream file(filename, std::ios::binary | std::ios::ate);
     if (!file) return nullptr;
 
@@ -156,7 +156,7 @@ char* load_file(const std::string& filename, size_t& size) {
     return buffer;
 }
 
-void write_to_file(const std::string& filename, void* data, std::size_t size) {
+void write_to_file(const std::string& filename, void* data, uint32_t size) {
     std::ofstream file(filename, std::ios::binary);
     file.write((char*)(data), size);
     file.close();
