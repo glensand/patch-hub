@@ -8,6 +8,8 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+RUN mkdir -p /logs /cache
+
 COPY . .
 
 RUN mkdir -p build \
