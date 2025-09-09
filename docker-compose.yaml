@@ -8,6 +8,6 @@ services:
     ports:
       - "1555:1555"
     volumes:
-      - ./logs:/logs
-      - ./cache:/cache
+      - ./logs:/app/logs
+      - ./cache:/app/cache
     restart: unless-stopped
