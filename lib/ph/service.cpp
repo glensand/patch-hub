@@ -19,6 +19,8 @@
 
 #include "stream_wrapper.h"
 #include "message.h"
+#include "hope_thread/containers/queue/spsc_queue.h"
+#include "hope_thread/runtime/worker_thread.h"
 
 namespace ph {
 
@@ -78,6 +80,9 @@ namespace ph {
                 response.write(stream);
                 in_state->second = nullptr;
                 c.set_state(hope::io::event_loop::connection_state::write);
+                m_io_cmd.enqueue([this, patches = response.patches] {
+                    cput(patches);
+                });
             };
             m_exec[uint8_t(message::etype::get_patches)] = [&](event_loop_stream_wrapper& stream,
                 hope::io::event_loop::connection& c, state_t in_state, message* msg) {
@@ -122,7 +127,14 @@ namespace ph {
                 delete msg;
                 in_state->second = nullptr;
                 c.set_state(hope::io::event_loop::connection_state::write);
+                m_io_cmd.enqueue([this, patches = response.removed_patches] {
+                    cdelete(patches);
+                });
             };
+            restore_from_cache();
+            m_io = std::thread([this] {
+	            io();
+            });
         }
         virtual void run() override {
             constexpr auto port = 1555;
@@ -140,7 +152,14 @@ namespace ph {
             });
         }
         virtual ~service_impl() override {
+            m_running.store(false);
             m_event_loop->stop();
+            m_io.join();
+            // clear queue for sure
+            std::function<void()> f;
+            while (m_io_cmd.try_dequeue(f)) {
+                f();
+            }
             delete m_event_loop;
         }
 
@@ -202,6 +221,102 @@ namespace ph {
             } // otherwise needs more reads
         }
 
+        void io() {
+            while (m_running.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100)); // most stable stuff ever
+                std::function<void()> f;
+                while (m_io_cmd.try_dequeue(f)) {
+	                f();
+                }
+            }
+        }
+
+        void restore_from_cache() {
+            LOG(INFO) << "Restore from cache";
+            std::filesystem::path p = m_cache_dir;
+            try {
+                for (const auto& entry : std::filesystem::recursive_directory_iterator(p)) {
+                    if (entry.is_regular_file()) {
+                        const auto new_p = entry.path().string();
+                        const auto filename = entry.path().filename().string();
+                        LOG(INFO) << "Restored from cache" << HOPE_VAL(new_p);
+                        auto pos = new_p.find('_');
+                        if (pos != std::string::npos) {
+                            std::string platform = new_p.substr(0, pos);
+                            std::string revision = new_p.substr(pos + 1);
+                            const auto revision_int = std::stoi(revision);
+                            LOG(INFO) << "Trying to restore patch" << HOPE_VAL(platform) << HOPE_VAL(revision) << HOPE_VAL(filename);
+                            std::ifstream file(filename, std::ios::binary | std::ios::ate);
+                            if (file.is_open()) {
+                                const auto size = file.tellg();
+                                file.seekg(0, std::ios::beg);
+                                auto new_patch = std::make_shared<patch>();
+                                new_patch->file_size = (uint32_t)size;
+                                new_patch->name = filename;
+                                new_patch->platform = platform;
+                                new_patch->data = new uint8_t[size];
+                                if (!file.read((char*)new_patch->data, size)) {
+                                    LOG(LERR) << "Cannot read file" << HOPE_VAL(new_p);
+                                } else {
+                                    const patch_key key{ revision_t(revision_int), platform };
+                                    auto& registry_entry = m_patch_registry[key];
+                                    registry_entry.emplace_back(std::move(new_patch));
+                                }
+                            } else {
+	                            LOG(LERR) << "Cannot open file" << HOPE_VAL(new_p);
+                            }
+                        } else {
+                            LOG(LERR) << "Cannot parse cache" << HOPE_VAL(new_p);
+                        }
+                    }
+                }
+            }
+            catch (const std::filesystem::filesystem_error& e) {
+                LOG(INFO) << "Cache load err" << HOPE_VAL(e.what());
+            }
+            for (const auto& [k, patches] : m_patch_registry) {
+                LOG(INFO) << "Loaded patches for";
+            }
+        }
+
+        void cput(const std::vector<std::shared_ptr<patch>>& patches) {
+            cdelete(patches);
+	        for (const auto& p : patches) {
+		        const auto subdir = m_cache_dir + "/" + p->platform + "_" + std::to_string(p->revision) + "/";
+                const auto path = subdir + p->name;
+                try {
+                    if (std::filesystem::create_directories(subdir)) {
+                        LOG(INFO) << "Created dir tree for patch cache" << HOPE_VAL(subdir);
+                    }
+                }
+                catch (const std::filesystem::filesystem_error& e) {
+                    LOG(INFO) << "Crete folder err" << HOPE_VAL(e.what());
+                }
+                std::ofstream cache(path);
+                if (cache.is_open()) {
+	                cache.write((char*)p->data, p->file_size);
+                } else {
+                    LOG(INFO) << "Cannot open file" << HOPE_VAL(path);
+                }
+	        }
+        }
+
+        void cdelete(const std::vector<std::shared_ptr<patch>>& patches) {
+            for (const auto& p : patches) {
+                const auto subdir = m_cache_dir + "/" + p->platform + "_" + std::to_string(p->revision) + "/";
+                const auto path = subdir + p->name;
+                try {
+                    if (std::filesystem::remove(path)) {
+                        LOG(INFO) << "Removed old patch from cache" << HOPE_VAL(path);
+                    }
+                }
+                catch (const std::filesystem::filesystem_error& e) {
+                    LOG(INFO) << "Cannot remove patch (not always an error)" << HOPE_VAL(e.what());
+                }
+            }
+        }
+
+        std::atomic_bool m_running;
         hope::io::event_loop* m_event_loop{ nullptr };
 
         // client id (raw socket) to client state
@@ -225,6 +340,9 @@ namespace ph {
         };
         using patch_array_t = std::vector<std::shared_ptr<patch>>;
         std::unordered_map<patch_key, patch_array_t, patch_key::hash> m_patch_registry;
+        hope::threading::spsc_queue<std::function<void()>> m_io_cmd;
+        std::thread m_io;
+        const std::string m_cache_dir = "cache/";
     };
 
     service* create_service() {

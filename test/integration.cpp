@@ -100,6 +100,31 @@ void run_delete() {
     }
 }
 
+void run_cache() {
+    ph::service* sv = nullptr;
+    std::thread servicet([&] {
+        sv = ph::create_service();
+        sv->run();
+    });
+    while (!sv) { std::this_thread::yield(); }
+    run_upload();
+    sv->stop();
+    servicet.join();
+    delete sv;
+
+    sv = nullptr;
+    servicet = std::thread([&] {
+        sv = ph::create_service();
+        sv->run();
+    });
+    while (!sv) { std::this_thread::yield(); }
+    run_list();
+    run_download();
+    sv->stop();
+    servicet.join();
+    delete sv;
+}
+
 void run_integration() {
     ph::service* sv = nullptr;
     std::thread servicet([&]{
@@ -130,12 +155,14 @@ void run_integration() {
     run_download();
     run_delete();
 
+    sv->stop();
+    servicet.join();
+    delete sv;
+
+    run_cache();
+
     for (auto& p : list) {
         p->data = nullptr;
     }
     delete [] test_buffer;
-
-    sv->stop();
-    servicet.join();
-    delete sv;
 }

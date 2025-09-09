@@ -12,9 +12,8 @@
 #include <cstdint>
 #include "hope_logger/log_helper.h"
 
-#undef ERROR
 #define INFO hope::log::log_level::info
-#define ERROR hope::log::log_level::error
+#define LERR hope::log::log_level::error
 #define LOG(Prior) HOPE_INTERIOR_LOG(Prior, *glob_logger)
 #define CLOG(Prior, Cnd) if ((Cnd)) HOPE_INTERIOR_LOG(Prior, *glob_logger)
 
