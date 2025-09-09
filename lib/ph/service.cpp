@@ -279,6 +279,12 @@ namespace ph {
             catch (const std::filesystem::filesystem_error& e) {
                 LOG(INFO) << "Cache load err" << HOPE_VAL(e.what());
             }
+            catch (const std::exception& e) {
+                LOG(INFO) << "Cache load err" << HOPE_VAL(e.what());
+            }
+            catch (...){
+                LOG(INFO) << "Cache load err unknown";
+            }
             for (const auto& [k, patches] : m_patch_registry) {
                 LOG(INFO) << "Loaded patches for" << HOPE_VAL(k.platform) << HOPE_VAL(k.revision);
                 for (const auto& p : patches) {
