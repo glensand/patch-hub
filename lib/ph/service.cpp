@@ -136,24 +136,26 @@ namespace ph {
 	            io();
             });
         }
-        virtual void run() override {
-            constexpr auto port = 1555;
+        virtual void run(int port) override {
             m_event_loop = hope::io::create_event_loop();
             LOG(INFO) << "Created event loop";
             LOG(INFO) << "Run loop on port" << HOPE_VAL(port);
             hope::io::event_loop::config ev_cfg;
             ev_cfg.port = port;
-            m_event_loop->run(ev_cfg,
-            hope::io::event_loop::callbacks {
-                [this] (auto&& c) { on_create(c); },
-                [this] (auto&& c) { on_read(c); },
-                [this] (auto&& c) { on_write(c); },
-                [this] (hope::io::event_loop::connection& c, const std::string& err) { on_error(c, err); }
-            });
+            try {
+                m_event_loop->run(ev_cfg,
+                    hope::io::event_loop::callbacks {
+                    [this] (auto&& c) { on_create(c); },
+                    [this] (auto&& c) { on_read(c); },
+                    [this] (auto&& c) { on_write(c); },
+                    [this] (auto&& c, auto&& err) { on_error(c, err); }
+                });
+            } catch (const std::exception& ex) {
+                LOG(LERR) << HOPE_VAL(ex.what());
+            }
         }
         virtual ~service_impl() override {
             m_running.store(false);
-            m_event_loop->stop();
             m_io.join();
             // clear queue for sure
             std::function<void()> f;
@@ -239,14 +241,16 @@ namespace ph {
                     if (entry.is_regular_file()) {
                         const auto new_p = entry.path().string();
                         const auto filename = entry.path().filename().string();
-                        LOG(INFO) << "Restored from cache" << HOPE_VAL(new_p);
-                        auto pos = new_p.find('_');
+                        // /cache/platform_revision/
+                        auto parent_path = entry.path().parent_path().string();
+                        auto platform_revision = std::string(parent_path.c_str() + 6, parent_path.size() - 6);
+                        const auto pos = platform_revision.rfind('_');
                         if (pos != std::string::npos) {
-                            std::string platform = new_p.substr(0, pos);
-                            std::string revision = new_p.substr(pos + 1);
-                            const auto revision_int = std::stoi(revision);
+                            std::string platform = platform_revision.substr(0, pos);
+                            std::string revision = platform_revision.substr(pos + 1);
                             LOG(INFO) << "Trying to restore patch" << HOPE_VAL(platform) << HOPE_VAL(revision) << HOPE_VAL(filename);
-                            std::ifstream file(filename, std::ios::binary | std::ios::ate);
+                            const auto revision_int = std::stoi(revision);
+                            std::ifstream file(new_p, std::ios::binary | std::ios::ate);
                             if (file.is_open()) {
                                 const auto size = file.tellg();
                                 file.seekg(0, std::ios::beg);
@@ -255,6 +259,7 @@ namespace ph {
                                 new_patch->name = filename;
                                 new_patch->platform = platform;
                                 new_patch->data = new uint8_t[size];
+                                new_patch->revision = revision_int;
                                 if (!file.read((char*)new_patch->data, size)) {
                                     LOG(LERR) << "Cannot read file" << HOPE_VAL(new_p);
                                 } else {
@@ -275,15 +280,19 @@ namespace ph {
                 LOG(INFO) << "Cache load err" << HOPE_VAL(e.what());
             }
             for (const auto& [k, patches] : m_patch_registry) {
-                LOG(INFO) << "Loaded patches for";
+                LOG(INFO) << "Loaded patches for" << HOPE_VAL(k.platform) << HOPE_VAL(k.revision);
+                for (const auto& p : patches) {
+                    LOG(INFO) << HOPE_VAL(p->name);
+                }
             }
         }
 
         void cput(const std::vector<std::shared_ptr<patch>>& patches) {
             cdelete(patches);
 	        for (const auto& p : patches) {
-		        const auto subdir = m_cache_dir + "/" + p->platform + "_" + std::to_string(p->revision) + "/";
+		        const auto subdir = m_cache_dir + p->platform + "_" + std::to_string(p->revision) + "/";
                 const auto path = subdir + p->name;
+                LOG(INFO) << "Put patch to cache" << HOPE_VAL(path);
                 try {
                     if (std::filesystem::create_directories(subdir)) {
                         LOG(INFO) << "Created dir tree for patch cache" << HOPE_VAL(subdir);
@@ -295,6 +304,7 @@ namespace ph {
                 std::ofstream cache(path);
                 if (cache.is_open()) {
 	                cache.write((char*)p->data, p->file_size);
+                    LOG(INFO) << "Patch preserver successfully" << HOPE_VAL(path);
                 } else {
                     LOG(INFO) << "Cannot open file" << HOPE_VAL(path);
                 }

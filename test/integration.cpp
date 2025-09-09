@@ -8,9 +8,9 @@
 // uploaded patches
 ph::client::plist_t list;
 
-void run_upload() {
+void run_upload(int port = 1555) {
     std::cout << "// ----------- Upload patches // -----------\n";
-    auto client = ph::client::create("localhost", 1555);
+    auto client = ph::client::create("localhost", port);
     const auto uploaded = client->upload(list);
     for (auto p : uploaded) {
         p->print();
@@ -18,9 +18,9 @@ void run_upload() {
     delete client;
 }
 
-void run_list() {
+void run_list(int port = 1555) {
     std::cout << "// ----------- List patches // -----------\n";
-    auto client = ph::client::create("localhost", 1555);
+    auto client = ph::client::create("localhost", port);
     const auto plist = client->list();
     for (const auto& p : plist) {
         p->print();
@@ -35,9 +35,9 @@ void run_list() {
     }
 }
 
-void run_download() {
+void run_download(int port = 1555) {
     std::cout << "// ----------- Download patches // -----------" << std::endl;
-    auto client = ph::client::create("localhost", 1555);
+    auto client = ph::client::create("localhost", port);
     const auto plist = client->list();
     struct patch_key final {
         ph::revision_t revision{};
@@ -76,9 +76,9 @@ void run_download() {
     }
 }
 
-void run_delete() {
+void run_delete(int port = 1555) {
     std::cout << "// ----------- Delete patches // -----------" << std::endl;
-    auto client = ph::client::create("localhost", 1555);
+    auto client = ph::client::create("localhost", port);
     std::vector<std::shared_ptr<ph::patch>> removedall;
     for (const auto& p : list) {
         const auto removed = client->pdelete(p->revision, p->platform);
@@ -87,27 +87,21 @@ void run_delete() {
             removedall.emplace_back(rp);
         }
     }
-    for (const auto& r : removedall) {
-        for (auto it = begin(list); it != end(list); ) {
-            auto& candidate = *it;
-            if (candidate->name == r->name) {
-                candidate->data = nullptr;
-                it = list.erase(it);
-            } else {
-                ++it;
-            }
-        }
-    }
 }
 
 void run_cache() {
+    std::cout << "// ----------- Run cache test // -----------" << std::endl;
+    // I think we need tsome time here
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     ph::service* sv = nullptr;
     std::thread servicet([&] {
         sv = ph::create_service();
-        sv->run();
+        std::atomic_thread_fence(std::memory_order_seq_cst);
+        sv->run(1556);
     });
     while (!sv) { std::this_thread::yield(); }
-    run_upload();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100)); // even more time to start listen
+    run_upload(1556);
     sv->stop();
     servicet.join();
     delete sv;
@@ -115,11 +109,11 @@ void run_cache() {
     sv = nullptr;
     servicet = std::thread([&] {
         sv = ph::create_service();
-        sv->run();
+        sv->run(1557);
     });
     while (!sv) { std::this_thread::yield(); }
-    run_list();
-    run_download();
+    run_list(1557);
+    run_download(1557);
     sv->stop();
     servicet.join();
     delete sv;
