@@ -132,6 +132,7 @@ namespace ph {
                 });
             };
             restore_from_cache();
+            m_running = true;
             m_io = std::thread([this] {
 	            io();
             });
