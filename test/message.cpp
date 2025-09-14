@@ -20,9 +20,8 @@ void serialize_list_response() {
     ph::list_patches_response response;
     for (auto i = 0; i < 5; ++i) {
         auto p = std::make_shared<ph::patch>();
-        p->platform = "WindowsClient";
+        p->tag = std::string("WindowsClient") + "_" + std::to_string(i);
         p->name = "random_patch_name" + std::to_string(i);
-        p->revision = i;
         p->file_size = i * 100000;
         response.patches.push_back(std::move(p));
     }
@@ -37,16 +36,14 @@ void serialize_list_response() {
     const auto list_response = static_cast<ph::list_patches_response *>(response_deserialized);
     for (auto i = 0; i < response.patches.size(); ++i) {
         assert(list_response->patches[i]->name == response.patches[i]->name);
-        assert(list_response->patches[i]->platform == response.patches[i]->platform);
-        assert(list_response->patches[i]->revision == response.patches[i]->revision);
+        assert(list_response->patches[i]->tag == response.patches[i]->tag);
         assert(list_response->patches[i]->file_size == response.patches[i]->file_size);
     }
 }
 
 void serialize_delete_request() {
     ph::delete_patch_request request;
-    request.platform = "WindowsClient";
-    request.revision = 1;
+    request.tag = std::string("WindowsClient") + "_" + std::to_string(1);
     hope::io::event_loop::fixed_size_buffer b;
     ph::event_loop_stream_wrapper stream(b);
 
@@ -56,8 +53,7 @@ void serialize_delete_request() {
     request_deserialized->read(stream);
     assert(request_deserialized->get_type() == request.get_type());
     const auto delete_request = static_cast<ph::delete_patch_request *>(request_deserialized);
-    assert(delete_request->revision == request.revision);
-    assert(delete_request->platform == request.platform);
+    assert(delete_request->tag == request.tag);
 }
 
 void serialize_delete_response() {
@@ -91,8 +87,7 @@ void serialize_upload_request() {
     ph::upload_patch_request request;
     for (auto i= 0 ; i < 5; ++i) {
         auto testp = std::make_shared<ph::patch>();
-        testp->platform = "WindowsClient";
-        testp->revision = 1;
+        testp->tag = std::string("WindowsClient") + "_" + std::to_string(i);
         testp->name = "random_name" + std::to_string(i);
         testp->file_size = std::rand() % buffer_size;
         testp->data = test_buffer;
@@ -115,8 +110,7 @@ void serialize_upload_request() {
     for (auto i = 0; i < request.patches.size(); ++i) {
         assert(upload_request->patches[i]->name == request.patches[i]->name);
         assert(upload_request->patches[i]->file_size == request.patches[i]->file_size);
-        assert(upload_request->patches[i]->platform == request.patches[i]->platform);
-        assert(upload_request->patches[i]->platform == request.patches[i]->platform);
+        assert(upload_request->patches[i]->tag == request.patches[i]->tag);
         const auto equal = std::memcmp(upload_request->patches[i]->data,
             request.patches[i]->data, upload_request->patches[i]->file_size);
         assert(equal == 0);
@@ -134,8 +128,7 @@ void serialize_upload_response() {
         const auto size = i * 100000;
         for (auto i = 0; i < 5; ++i) {
             auto testp = std::make_shared<ph::patch>();
-            testp->platform = "WindowsClient";
-            testp->revision = 1;
+            testp->tag = std::string("WindowsClient") + "_" + std::to_string(i);
             testp->name = "random_name" + std::to_string(i);
             testp->file_size = std::rand() % 100000;
         }
@@ -153,15 +146,13 @@ void serialize_upload_response() {
     for (auto i = 0; i < response.patches.size(); ++i) {
         assert(response.patches[i]->file_size == upload_response->patches[i]->file_size);
         assert(response.patches[i]->name == upload_response->patches[i]->name);
-        assert(response.patches[i]->revision == upload_response->patches[i]->revision);
-        assert(response.patches[i]->platform == upload_response->patches[i]->platform);
+        assert(response.patches[i]->tag == upload_response->patches[i]->tag);
     }
 }
 
 void serialize_get_request() {
     ph::get_patches_request request;
-    request.platform = "WindowsClient";
-    request.revision = 1;
+    request.tag = std::string("WindowsClient") + "_" + std::to_string(1);
     hope::io::event_loop::fixed_size_buffer b;
     ph::event_loop_stream_wrapper stream(b);
     
@@ -172,8 +163,7 @@ void serialize_get_request() {
    
     assert(request_deserialized->get_type() == request.get_type());
     const auto get_request = static_cast<ph::get_patches_request *>(request_deserialized);
-    assert(get_request->platform == request.platform);
-    assert(get_request->revision == request.revision);
+    assert(get_request->tag == request.tag);
 }
 
 void serialize_get_response() {

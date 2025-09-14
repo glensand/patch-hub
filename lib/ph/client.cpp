@@ -25,10 +25,9 @@ namespace {
             m_stream->disconnect();
             return response->patches;
         }
-        virtual plist_t download(std::size_t revision, const std::string& platform) override {
+        virtual plist_t download(const std::string& tag) override {
             ph::get_patches_request req;
-            req.revision = (uint32_t)revision;
-            req.platform = platform;
+            req.tag = tag;
             m_stream->connect(m_host, m_port);
             serialize(req);
             auto response = deserialize<ph::get_patches_response>();
@@ -44,10 +43,9 @@ namespace {
             m_stream->disconnect();
             return response->patches;
         }
-        virtual plist_t pdelete(std::size_t revision, const std::string& platform) override {
+        virtual plist_t pdelete(const std::string& tag) override {
             ph::delete_patch_request request;
-            request.platform = platform;
-            request.revision = (uint32_t)revision;
+            request.tag = tag;
             m_stream->connect(m_host, m_port);
             serialize(request);
             auto response = deserialize<ph::delete_patch_response>();

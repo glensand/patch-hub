@@ -19,9 +19,8 @@ namespace ph {
 
     struct patch final {
         std::string name;
-        std::string platform;
+        std::string tag;
         uint32_t file_size{};
-        uint32_t revision{};
         uint8_t* data{};
         ~patch() {
 	        delete[] data;
@@ -29,21 +28,18 @@ namespace ph {
         void print() const {
             std::cout << "Patch:\n"
                 << "  Name: " << name << '\n'
-                << "  Platform: " << platform << '\n'
-                << "  File size: " << file_size << " bytes\n"
-                << "  Revision: " << revision << '\n';
+                << "  Tag: " << tag << '\n'
+                << "  File size: " << file_size << " bytes\n";
         }
         void write(event_loop_stream_wrapper& stream) const {
 	        stream.write(name);
-	        stream.write(platform);
+	        stream.write(tag);
 	        stream.write(file_size);
-	        stream.write(revision);
         }
         void read(event_loop_stream_wrapper& stream) {
             stream.read(name);
-            stream.read(platform);
+            stream.read(tag);
             stream.read(file_size);
-            stream.read(revision);
         }
     };
 
@@ -163,22 +159,18 @@ namespace ph {
         std::size_t patch_id = 0;
     };
 
-    // client -> server request patches for specified revision
+    // client -> server request patches for specified tag
     struct get_patches_request final : message {
         get_patches_request() : message(etype::get_patches){}
-        revision_t revision{};
-        std::string platform{};
+        std::string tag{};
     private:
         virtual bool write_impl(event_loop_stream_wrapper& stream) override {
-            assert(!platform.empty());
-            assert(revision != 0);
-            stream.write(revision);
-            stream.write(platform);
+            assert(!tag.empty());
+            stream.write(tag);
             return true;
         }
         virtual bool read_impl(event_loop_stream_wrapper& stream) override {
-            stream.read(revision);
-            stream.read(platform);
+            stream.read(tag);
             return true;
         }
     };
@@ -187,7 +179,7 @@ namespace ph {
         get_patches_response() : patch_message(etype::get_patches){}
     };
 
-    // client -> server message to store patches for specified revision and platform
+    // client -> server message to store patches for specified tag
     struct upload_patch_request final : patch_message {
         upload_patch_request() : patch_message(etype::upload_patch) {}
     };
@@ -243,17 +235,14 @@ namespace ph {
 
     struct delete_patch_request final : message {
         delete_patch_request() : message(etype::delete_patch){}
-        revision_t revision{};
-        std::string platform{};
+        std::string tag{};
     private:
         virtual bool write_impl(event_loop_stream_wrapper& stream) override {
-            stream.write(revision);
-            stream.write(platform);
+            stream.write(tag);
             return true;
         }
         virtual bool read_impl(event_loop_stream_wrapper& stream) override {
-            stream.read(revision);
-            stream.read(platform);
+            stream.read(tag);
             return true;
         }
     };

@@ -58,9 +58,8 @@ namespace ph {
                 const auto request = static_cast<upload_patch_request*>(msg);
                 LOG(INFO) << "Got upload message" << HOPE_VAL(c.descriptor);
                 for (const auto& p : request->patches) {
-                    LOG(INFO) << HOPE_VAL(p->name) << HOPE_VAL(p->file_size) << HOPE_VAL(p->platform) << HOPE_VAL(p->revision);
-                    const patch_key key{ p->revision, p->platform };
-                    auto& entry = m_patch_registry[key];
+                    LOG(INFO) << HOPE_VAL(p->name) << HOPE_VAL(p->file_size) << HOPE_VAL(p->tag);
+                    auto& entry = m_patch_registry[p->tag];
                     bool replaced = false;
                     for (auto& maybepatch : entry) {
                         if (maybepatch->name == p->name) {
@@ -87,15 +86,12 @@ namespace ph {
             m_exec[uint8_t(message::etype::get_patches)] = [&](event_loop_stream_wrapper& stream,
                 hope::io::event_loop::connection& c, state_t in_state, message* msg) {
                 const auto get_patches_request = static_cast<ph::get_patches_request*>(msg);
-                LOG(INFO) << "Got patch request" << HOPE_VAL(c.descriptor) << HOPE_VAL(get_patches_request->platform) << HOPE_VAL(get_patches_request->revision);
-                const auto revision = get_patches_request->revision;
-                const auto platform = get_patches_request->platform;
-                const patch_key key{ revision, platform };
-                auto entry = m_patch_registry[key];
+                LOG(INFO) << "Got patch request" << HOPE_VAL(c.descriptor) << HOPE_VAL(get_patches_request->tag);
+                auto entry = m_patch_registry[get_patches_request->tag];
                 auto* response = new get_patches_response;
                 response->patches = entry;
                 for (const auto& p : response->patches) {
-                    LOG(INFO) << "Found patch:" << HOPE_VAL(p->name) << HOPE_VAL(p->file_size) << HOPE_VAL(p->platform) << HOPE_VAL(p->revision);
+                    LOG(INFO) << "Found patch:" << HOPE_VAL(p->name) << HOPE_VAL(p->file_size) << HOPE_VAL(p->tag);
                 }
                 delete msg;
                 // if complete remove msg right now
@@ -110,16 +106,13 @@ namespace ph {
             m_exec[uint8_t(message::etype::delete_patch)] = [&](event_loop_stream_wrapper& stream,
                 hope::io::event_loop::connection& c, state_t in_state, message* msg) {
                 const auto delete_patch = static_cast<delete_patch_request*>(msg);
-                LOG(INFO) << "Delete patch request" << HOPE_VAL(c.descriptor) << HOPE_VAL(delete_patch->platform) << HOPE_VAL(delete_patch->revision);
-                const auto platform = delete_patch->platform;
-                const auto revision = delete_patch->revision;
-                const patch_key key{ revision, platform };
+                LOG(INFO) << "Delete patch request" << HOPE_VAL(c.descriptor) << HOPE_VAL(delete_patch->tag);
                 delete_patch_response response;
-                const auto& entry = m_patch_registry.find(key);
+                const auto& entry = m_patch_registry.find(delete_patch->tag);
                 if (entry != m_patch_registry.end()) {
                     response.removed_patches = entry->second;
                     for (const auto& p : response.removed_patches) {
-                        LOG(INFO) << "Removed patch:" << HOPE_VAL(p->name) << HOPE_VAL(p->file_size) << HOPE_VAL(p->platform) << HOPE_VAL(p->revision);
+                        LOG(INFO) << "Removed patch:" << HOPE_VAL(p->name) << HOPE_VAL(p->file_size) << HOPE_VAL(p->tag);
                     }
                     m_patch_registry.erase(entry);
                 }
@@ -244,35 +237,24 @@ namespace ph {
                         const auto filename = entry.path().filename().string();
                         // /cache/platform_revision/
                         auto parent_path = entry.path().parent_path().string();
-                        auto platform_revision = std::string(parent_path.c_str() + 6, parent_path.size() - 6);
-                        const auto pos = platform_revision.rfind('_');
-                        if (pos != std::string::npos) {
-                            std::string platform = platform_revision.substr(0, pos);
-                            std::string revision = platform_revision.substr(pos + 1);
-                            LOG(INFO) << "Trying to restore patch" << HOPE_VAL(platform) << HOPE_VAL(revision) << HOPE_VAL(filename);
-                            const auto revision_int = std::stoi(revision);
-                            std::ifstream file(new_p, std::ios::binary | std::ios::ate);
-                            if (file.is_open()) {
-                                const auto size = file.tellg();
-                                file.seekg(0, std::ios::beg);
-                                auto new_patch = std::make_shared<patch>();
-                                new_patch->file_size = (uint32_t)size;
-                                new_patch->name = filename;
-                                new_patch->platform = platform;
-                                new_patch->data = new uint8_t[size];
-                                new_patch->revision = revision_int;
-                                if (!file.read((char*)new_patch->data, size)) {
-                                    LOG(LERR) << "Cannot read file" << HOPE_VAL(new_p);
-                                } else {
-                                    const patch_key key{ revision_t(revision_int), platform };
-                                    auto& registry_entry = m_patch_registry[key];
-                                    registry_entry.emplace_back(std::move(new_patch));
-                                }
+                        auto tag = std::string(parent_path.c_str() + 6, parent_path.size() - 6);
+                        LOG(INFO) << "Trying to restore patch" << HOPE_VAL(tag) << HOPE_VAL(filename);
+                        std::ifstream file(new_p, std::ios::binary | std::ios::ate);
+                        if (file.is_open()) {
+                            const auto size = file.tellg();
+                            file.seekg(0, std::ios::beg);
+                            auto new_patch = std::make_shared<patch>();
+                            new_patch->file_size = (uint32_t)size;
+                            new_patch->name = filename;
+                            new_patch->data = new uint8_t[size];
+                            new_patch->tag = tag;
+                            if (!file.read((char*)new_patch->data, size)) {
+                                LOG(LERR) << "Cannot read file" << HOPE_VAL(new_p);
                             } else {
-	                            LOG(LERR) << "Cannot open file" << HOPE_VAL(new_p);
+                                m_patch_registry[tag].emplace_back(std::move(new_patch));
                             }
                         } else {
-                            LOG(LERR) << "Cannot parse cache" << HOPE_VAL(new_p);
+                            LOG(LERR) << "Cannot open file" << HOPE_VAL(new_p);
                         }
                     }
                 }
@@ -287,7 +269,7 @@ namespace ph {
                 LOG(INFO) << "Cache load err unknown";
             }
             for (const auto& [k, patches] : m_patch_registry) {
-                LOG(INFO) << "Loaded patches for" << HOPE_VAL(k.platform) << HOPE_VAL(k.revision);
+                LOG(INFO) << "Loaded patches for" << HOPE_VAL(k);
                 for (const auto& p : patches) {
                     LOG(INFO) << HOPE_VAL(p->name);
                 }
@@ -297,7 +279,7 @@ namespace ph {
         void cput(const std::vector<std::shared_ptr<patch>>& patches) {
             cdelete(patches);
 	        for (const auto& p : patches) {
-		        const auto subdir = m_cache_dir + p->platform + "_" + std::to_string(p->revision) + "/";
+		        const auto subdir = m_cache_dir + "/" + p->tag + "/";
                 const auto path = subdir + p->name;
                 LOG(INFO) << "Put patch to cache" << HOPE_VAL(path);
                 try {
@@ -320,7 +302,7 @@ namespace ph {
 
         void cdelete(const std::vector<std::shared_ptr<patch>>& patches) {
             for (const auto& p : patches) {
-                const auto subdir = m_cache_dir + "/" + p->platform + "_" + std::to_string(p->revision) + "/";
+                const auto subdir = m_cache_dir + "/" + p->tag + "/";
                 const auto path = subdir + p->name;
                 try {
                     if (std::filesystem::remove(path)) {
@@ -340,25 +322,13 @@ namespace ph {
         std::unordered_map<int32_t, message*> m_active_clients;
         std::array<exec_t, (int8_t)message::etype::count> m_exec;
 
-        // revision and platform is a key for patches
-        struct patch_key final {
-            revision_t revision{};
-            std::string platform;
-            bool operator==(const patch_key& other) const {
-                return revision == other.revision && platform == other.platform;
-            }
-            struct hash final {
-                std::size_t operator()(const patch_key& k) const {
-                    std::size_t h1 = std::hash<revision_t>{}(k.revision);
-                    std::size_t h2 = std::hash<std::string>{}(k.platform);
-                    return h1 ^ (h2 << 1);
-                }
-            };
-        };
         using patch_array_t = std::vector<std::shared_ptr<patch>>;
-        std::unordered_map<patch_key, patch_array_t, patch_key::hash> m_patch_registry;
+        using patch_key_t = std::string;
+
+        std::unordered_map<patch_key_t, patch_array_t> m_patch_registry;
         hope::threading::spsc_queue<std::function<void()>> m_io_cmd;
         std::thread m_io;
+
         const std::string m_cache_dir = "cache/";
     };
 

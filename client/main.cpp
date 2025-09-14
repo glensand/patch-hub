@@ -45,8 +45,7 @@ int main(int argc, char *argv[]) {
                 if (entry.is_regular_file()) {
                     auto p = std::make_shared<ph::patch>();
                     p->name = entry.path().filename().string();
-                    p->revision = (ph::revision_t)revision;
-                    p->platform = platform;
+                    p->tag = platform + "_" + std::to_string(revision);
                     p->data = (uint8_t*)load_file(entry.path().string(), p->file_size);
                     if (p->data == nullptr) {
                         std::cout << "Cannot load file[" << entry.path().string() << "]\n";
@@ -74,8 +73,7 @@ int main(int argc, char *argv[]) {
         std::filesystem::path p(filepath);
         auto patch = std::make_shared<ph::patch>();
         patch->name = p.filename().string();
-        patch->revision = (ph::revision_t)revision;
-        patch->platform = platform;
+        patch->tag = platform + "_" + std::to_string(revision);
         patch->data = (uint8_t*)load_file(p.string(), patch->file_size);
         if (patch->data == nullptr) {
             std::cout << "Cannot load file\n";
@@ -90,7 +88,8 @@ int main(int argc, char *argv[]) {
     });
     invoker.create_function("download", [client](const std::string& platform, std::size_t revision, const std::string& outdir) {
         std::cout << "Download patch files[" << platform << "]" "[" << revision <<"]" << " to[" << outdir << "]...\n";
-        const auto downloaded = client->download(revision, platform);
+        const auto tag = platform + "_" + std::to_string(revision);
+        const auto downloaded = client->download(tag);
         for (const auto& p : downloaded) {
             p->print();
             const std::string path = outdir + "/" + p->name;
@@ -99,7 +98,8 @@ int main(int argc, char *argv[]) {
     });
     invoker.create_function("delete", [client](const std::string& platform, std::size_t revision) {
         std::cout << "Delete patch...\n";
-        const auto& removed = client->pdelete(revision, platform);
+        const auto tag = platform + "_" + std::to_string(revision);
+        const auto& removed = client->pdelete(tag);
         for (const auto& p : removed) {
             p->print();
         }

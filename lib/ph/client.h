@@ -21,12 +21,12 @@ namespace ph {
         using plist_t = std::vector<std::shared_ptr<patch>>;
         // list all available patches, data will be empty
         virtual plist_t list() = 0;
-        // downloads all available patches for revision and platform
-        virtual plist_t download(std::size_t revision, const std::string& platform) = 0;
+        // downloads all available patches for tag
+        virtual plist_t download(const std::string& tag) = 0;
         // store or replace specified patches, returns list with uploaded patches
         virtual plist_t upload(const plist_t& plist) = 0;
         // tries to remove specified patches, returns list of removed patches
-        virtual plist_t pdelete(std::size_t revision, const std::string& platform) = 0;
+        virtual plist_t pdelete(const std::string& tag) = 0;
 
         static client* create(const std::string& ip, int port);
     };
