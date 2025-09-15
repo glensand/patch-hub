@@ -47,7 +47,7 @@ int main(int argc, char *argv[]) {
             for (const auto& entry : std::filesystem::directory_iterator(dir)) {
                 if (entry.is_regular_file()) {
                     auto p = std::make_shared<ph::patch>();
-                    p->name = entry.path().filename().string();
+                    p->name = "PH_Redist_" + entry.path().filename().string();
                     p->tag = platform + "_" + std::to_string(revision);
                     p->data = (uint8_t*)load_file(entry.path().string(), p->file_size);
                     if (p->data == nullptr) {
