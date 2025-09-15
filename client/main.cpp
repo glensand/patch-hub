@@ -66,9 +66,6 @@ int main(int argc, char *argv[]) {
         for (const auto& p : uploaded) {
             p->print();
         }
-        for (const auto& p : plist) {
-            delete p->data;
-        }
     });
     invoker.create_function("upload_file", [client](const std::string& platform,
         std::size_t revision, const std::string& filepath) {
@@ -87,7 +84,6 @@ int main(int argc, char *argv[]) {
                 p->print();
             }
         }
-        delete patch->data;
     });
     invoker.create_function("download", [client](const std::string& platform, std::size_t revision, const std::string& outdir) {
         std::cout << "Download patch files[" << platform << "]" "[" << revision <<"]" << " to[" << outdir << "]...\n";
