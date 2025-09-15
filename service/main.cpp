@@ -13,7 +13,7 @@ static void signal_handler(int signal) {
         glob_handler();
     }
 }
-int main() {
+int main(int argc, char* argv[]) {
     std::signal(SIGINT, signal_handler);
     glob_logger = new hope::log::logger(
         *hope::log::create_multy_stream({
@@ -21,12 +21,16 @@ int main() {
             hope::log::create_console_stream()
         })
     );
+    int port = 1556;
+    if (argc > 1) {
+	    port = std::stoi(argv[1]);
+    }
 
     auto serv = ph::create_service();
     glob_handler = [serv] {
         serv->stop();
     };
-    serv->run();
+    serv->run(port);
 
     return 0;
 }

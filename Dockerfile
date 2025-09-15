@@ -32,7 +32,7 @@ WORKDIR /app
 # copy just what we need
 COPY --from=builder /app/build/bin/service ./service
 
-EXPOSE 1555
+EXPOSE 1556
 
 ENTRYPOINT ["./service"]
 

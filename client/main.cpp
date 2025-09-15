@@ -6,7 +6,6 @@
 #include "ph/client.h"
 #include "consolelib/disco.h"
 #include "hope-io/net/init.h"
-#include "ph/service.h"
 
 char* load_file(const std::string& filename, uint32_t& size);
 void write_to_file(const std::string& filename, void* data, uint32_t size);
@@ -19,10 +18,14 @@ int main(int argc, char *argv[]) {
     } else {
         std::cout << "Host is not provided, localhost will be used\n";
     }
+    int port = 1556;
+    if (argc > 2) {
+        port = std::stoi(argv[4]);
+    }
 
     hope::io::init();
 
-    auto client = ph::client::create(ip, 1555);
+    auto client = ph::client::create(ip, port);
     bool exit = false;
 
     disco::completer_impl completer; // im not sure why i added this 4 years ago

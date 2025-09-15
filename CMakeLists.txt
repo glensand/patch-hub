@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(crash-reporter)
+project(ph-main)
 
 add_subdirectory(lib)
 add_subdirectory(service)
 add_subdirectory(client)
+add_subdirectory(submit_client)
 add_subdirectory(test)
 
 add_subdirectory(third-party/hope-logger/lib)
